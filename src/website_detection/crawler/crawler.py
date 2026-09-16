@@ -17,9 +17,25 @@ from src.website_detection.dom_analysis.dom_features import (
     extract_dom_features,
 )
 
+from src.website_detection.credential_analysis.credential_features import (
+    extract_credential_features,
+)
+
 from src.website_detection.graph_builder.resource_graph import (
     build_resource_graph,
     extract_graph_features,
+)
+
+from src.website_detection.graph_builder.graph_serializer import (
+    save_resource_graph,
+)
+
+from src.website_detection.url_analysis.url_features import (
+    extract_url_features,
+)
+
+from src.website_detection.visual_analysis.screenshot_capture import (
+    capture_page_screenshot,
 )
 
 
@@ -33,21 +49,22 @@ STABLE_PAGE_RETRIES = 3
 STABLE_PAGE_WAIT_MS = 5_000
 STABLE_PAGE_RETRY_DELAY_MS = 500
 
+# Avoid keeping an unlimited number of failed-request details.
+MAX_FAILED_REQUEST_DETAILS = 50
+
 
 # ============================================================
 # URL NORMALIZATION
 # ============================================================
 
-def normalize_url(
-    url: str,
-) -> str:
+def normalize_url(url: str) -> str:
     """
     Normalize a URL supplied to the crawler.
 
-    If no HTTP/HTTPS scheme exists, HTTPS is used.
+    If there is no HTTP/HTTPS scheme, HTTPS is used.
     """
 
-    url = url.strip()
+    url = str(url).strip()
 
     if not url.lower().startswith(
         (
@@ -61,6 +78,86 @@ def normalize_url(
 
 
 # ============================================================
+# URL COMPARISON
+# ============================================================
+
+def urls_equivalent(
+    first_url: str,
+    second_url: str,
+) -> bool:
+    """
+    Lightweight comparison used for navigation metadata.
+
+    A trailing slash difference is ignored.
+    """
+
+    if not first_url or not second_url:
+        return False
+
+    return (
+        str(first_url).rstrip("/")
+        ==
+        str(second_url).rstrip("/")
+    )
+
+
+# ============================================================
+# BROWSER INTERNAL ERROR PAGE DETECTION
+# ============================================================
+
+def is_browser_internal_error_url(
+    url: str,
+) -> bool:
+    """
+    Detect Chromium/browser-generated internal error pages.
+
+    Example:
+
+        chrome-error://chromewebdata/
+
+    These are not real destination websites.
+    """
+
+    if not url:
+        return False
+
+    normalized = str(
+        url
+    ).strip().lower()
+
+    browser_error_prefixes = (
+        "chrome-error://",
+        "chrome://",
+        "edge-error://",
+        "about:neterror",
+    )
+
+    if normalized.startswith(
+        browser_error_prefixes
+    ):
+        return True
+
+    try:
+
+        parsed = urlparse(
+            normalized
+        )
+
+        hostname = (
+            parsed.hostname
+            or ""
+        ).lower()
+
+        if hostname == "chromewebdata":
+            return True
+
+    except Exception:
+        pass
+
+    return False
+
+
+# ============================================================
 # DOMAIN EXTRACTION
 # ============================================================
 
@@ -68,22 +165,35 @@ def extract_domain(
     url: str,
 ) -> str:
     """
-    Extract and normalize the hostname from a URL.
+    Extract normalized hostname.
 
-    Removes the common leading 'www.' prefix.
+    Browser-generated internal pages intentionally return
+    an empty domain.
     """
 
     if not url:
         return ""
 
+    if is_browser_internal_error_url(
+        url
+    ):
+        return ""
+
     try:
+
         hostname = (
-            urlparse(url).hostname
+            urlparse(
+                url
+            ).hostname
             or ""
         ).lower()
 
-        if hostname.startswith("www."):
-            hostname = hostname[4:]
+        if hostname.startswith(
+            "www."
+        ):
+            hostname = hostname[
+                4:
+            ]
 
         return hostname
 
@@ -100,26 +210,24 @@ def build_redirect_metadata(
     final_url: str,
 ) -> dict[str, Any]:
     """
-    Compare the originally requested URL with the final URL.
+    Compare the originally requested website with the final
+    rendered website.
 
-    Cross-domain redirects are marked for later label review.
+    Cross-domain changes are marked for dataset-label review.
 
-    This function never changes the original dataset label.
+    Browser internal error pages are not redirects.
     """
 
     requested_domain = extract_domain(
         requested_url
     )
 
-    final_domain = extract_domain(
-        final_url
-    )
-
-    # --------------------------------------------------------
-    # No final page was reached
-    # --------------------------------------------------------
-
-    if not final_url:
+    if (
+        not final_url
+        or is_browser_internal_error_url(
+            final_url
+        )
+    ):
 
         return {
             "requested_domain":
@@ -138,32 +246,20 @@ def build_redirect_metadata(
                 False,
         }
 
-    # --------------------------------------------------------
-    # URL-level redirect
-    # --------------------------------------------------------
-
-    redirected = (
-        final_url.rstrip("/")
-        != requested_url.rstrip("/")
+    final_domain = extract_domain(
+        final_url
     )
 
-    # --------------------------------------------------------
-    # Domain-level redirect
-    # --------------------------------------------------------
+    redirected = not urls_equivalent(
+        requested_url,
+        final_url,
+    )
 
     cross_domain_redirect = bool(
         requested_domain
         and final_domain
         and requested_domain
         != final_domain
-    )
-
-    # --------------------------------------------------------
-    # Historical label may no longer describe current content
-    # --------------------------------------------------------
-
-    label_review_required = (
-        cross_domain_redirect
     )
 
     return {
@@ -180,7 +276,7 @@ def build_redirect_metadata(
             cross_domain_redirect,
 
         "label_review_required":
-            label_review_required,
+            cross_domain_redirect,
     }
 
 
@@ -192,11 +288,10 @@ def determine_crawl_status(
     status_code: int | None,
 ) -> str:
     """
-    Convert the main HTTP response into an operational
+    Convert final document HTTP status into an operational
     collection status.
 
-    These statuses describe crawling only.
-    They are not phishing classifications.
+    This is not a phishing classification.
     """
 
     if status_code is None:
@@ -219,14 +314,29 @@ def classify_navigation_error(
     error_message: str,
 ) -> str:
     """
-    Convert common Chromium / Playwright navigation errors
-    into research-friendly collection statuses.
+    Convert common browser/network failures into cleaner
+    research collection statuses.
     """
 
-    message = error_message.upper()
+    message = str(
+        error_message
+    ).upper()
 
     # --------------------------------------------------------
-    # Page continuously navigating while being captured
+    # Browser-generated error page
+    # --------------------------------------------------------
+
+    if (
+        "CHROME-ERROR://"
+        in message
+        or
+        "CHROMEWEBDATA"
+        in message
+    ):
+        return "BROWSER_ERROR_PAGE"
+
+    # --------------------------------------------------------
+    # Continuously changing navigation
     # --------------------------------------------------------
 
     unstable_navigation_indicators = (
@@ -275,7 +385,7 @@ def classify_navigation_error(
         return "CONNECTION_REFUSED"
 
     # --------------------------------------------------------
-    # Connection reset / closed
+    # Connection reset
     # --------------------------------------------------------
 
     if (
@@ -329,7 +439,7 @@ def classify_navigation_error(
         return "NETWORK_UNREACHABLE"
 
     # --------------------------------------------------------
-    # Redirect failure
+    # Redirect loop
     # --------------------------------------------------------
 
     if (
@@ -367,12 +477,13 @@ def is_navigation_change_error(
     error_message: str,
 ) -> bool:
     """
-    Determine whether a Playwright exception occurred because
-    the page changed navigation while its content was being
-    captured.
+    Check whether the rendered document changed while
+    page.content() was being captured.
     """
 
-    message = error_message.upper()
+    message = str(
+        error_message
+    ).upper()
 
     indicators = (
         "PAGE IS NAVIGATING AND CHANGING THE CONTENT",
@@ -381,7 +492,8 @@ def is_navigation_change_error(
 
     return any(
         indicator in message
-        for indicator in indicators
+        for indicator
+        in indicators
     )
 
 
@@ -394,17 +506,14 @@ def get_stable_page_snapshot(
     retries: int = STABLE_PAGE_RETRIES,
 ) -> dict[str, str]:
     """
-    Capture rendered HTML, title and final URL from a page.
+    Retrieve stable HTML, title and final URL.
 
-    Some websites trigger another navigation immediately after
-    the first page load. If that happens while page.content()
-    is running, retry after waiting for the new document.
-
-    A persistent navigation problem is re-raised and later
-    classified as NAVIGATION_UNSTABLE.
+    Some websites navigate again immediately after the first
+    document load. Retry only that specific condition.
     """
 
     if retries <= 0:
+
         raise ValueError(
             "retries must be greater than zero"
         )
@@ -418,30 +527,18 @@ def get_stable_page_snapshot(
 
         try:
 
-            # ------------------------------------------------
-            # Wait for current document when possible
-            # ------------------------------------------------
-
             try:
+
                 page.wait_for_load_state(
                     "domcontentloaded",
-                    timeout=STABLE_PAGE_WAIT_MS,
+                    timeout=
+                        STABLE_PAGE_WAIT_MS,
                 )
 
             except PlaywrightTimeoutError:
-                # Continue to content capture.
-                # The page may still already expose a usable DOM.
                 pass
 
-            # ------------------------------------------------
-            # Capture the current rendered document
-            # ------------------------------------------------
-
             html = page.content()
-
-            # ------------------------------------------------
-            # Capture associated metadata immediately
-            # ------------------------------------------------
 
             title = page.title()
 
@@ -462,30 +559,22 @@ def get_stable_page_snapshot(
 
             last_error = exc
 
-            # ------------------------------------------------
-            # Do not retry unrelated Playwright failures
-            # ------------------------------------------------
-
             if not is_navigation_change_error(
-                str(exc)
+                str(
+                    exc
+                )
             ):
                 raise
-
-            # ------------------------------------------------
-            # No retries remain
-            # ------------------------------------------------
 
             if attempt >= retries:
                 raise
 
-            # ------------------------------------------------
-            # Give the new navigation a short time to settle
-            # ------------------------------------------------
-
             try:
+
                 page.wait_for_load_state(
                     "domcontentloaded",
-                    timeout=STABLE_PAGE_WAIT_MS,
+                    timeout=
+                        STABLE_PAGE_WAIT_MS,
                 )
 
             except PlaywrightTimeoutError:
@@ -495,14 +584,351 @@ def get_stable_page_snapshot(
                 STABLE_PAGE_RETRY_DELAY_MS
             )
 
-    # Defensive fallback.
-    # Normally unreachable because the final retry re-raises.
     if last_error is not None:
         raise last_error
 
     raise RuntimeError(
-        "Unable to capture a stable page snapshot."
+        "Unable to capture stable page."
     )
+
+
+# ============================================================
+# SERVER REDIRECT CHAIN
+# ============================================================
+
+def extract_server_redirect_chain(
+    response,
+) -> list[str]:
+    """
+    Reconstruct server-side HTTP redirect history using
+    Playwright's redirected_from chain.
+
+    Example:
+
+        http://example.com
+            ↓
+        https://example.com
+            ↓
+        https://www.example.com/
+    """
+
+    if response is None:
+        return []
+
+    try:
+        request = response.request
+
+    except Exception:
+        return []
+
+    reversed_chain: list[str] = []
+
+    visited: set[int] = set()
+
+    while request is not None:
+
+        request_identity = id(
+            request
+        )
+
+        if request_identity in visited:
+            break
+
+        visited.add(
+            request_identity
+        )
+
+        try:
+
+            reversed_chain.append(
+                request.url
+            )
+
+            request = (
+                request.redirected_from
+            )
+
+        except Exception:
+            break
+
+    reversed_chain.reverse()
+
+    return reversed_chain
+
+
+# ============================================================
+# FAILED REQUEST ERROR TEXT
+# ============================================================
+
+def extract_request_failure_text(
+    request,
+) -> str:
+    """
+    Safely retrieve Playwright request failure information
+    across compatible Playwright representations.
+    """
+
+    try:
+
+        failure = request.failure
+
+        if failure is None:
+            return ""
+
+        if isinstance(
+            failure,
+            str,
+        ):
+            return failure
+
+        error_text = getattr(
+            failure,
+            "error_text",
+            None,
+        )
+
+        if error_text:
+            return str(
+                error_text
+            )
+
+        return str(
+            failure
+        )
+
+    except Exception:
+        return ""
+
+
+# ============================================================
+# BEHAVIORAL TELEMETRY BUILDER
+# ============================================================
+
+def build_behavioral_telemetry(
+    runtime_state: dict[str, Any],
+    initial_response,
+    final_document_response,
+    requested_url: str,
+    final_url: str,
+) -> dict[str, Any]:
+    """
+    Produce navigation/network behavioral metadata.
+
+    These are observable runtime signals, not phishing labels.
+    """
+
+    redirect_chain = (
+        extract_server_redirect_chain(
+            final_document_response
+        )
+    )
+
+    server_redirect_hops = max(
+        0,
+        len(
+            redirect_chain
+        ) - 1,
+    )
+
+    initial_response_url = ""
+
+    if initial_response is not None:
+
+        try:
+            initial_response_url = (
+                initial_response.url
+            )
+
+        except Exception:
+            initial_response_url = ""
+
+    # --------------------------------------------------------
+    # Detect navigation occurring after page.goto() returned
+    #
+    # This may represent JavaScript/meta-refresh navigation.
+    # --------------------------------------------------------
+
+    late_navigation_detected = bool(
+        initial_response_url
+        and final_url
+        and not urls_equivalent(
+            initial_response_url,
+            final_url,
+        )
+    )
+
+    return {
+        "response_count":
+            runtime_state.get(
+                "response_count",
+                0,
+            ),
+
+        "main_document_response_count":
+            runtime_state.get(
+                "main_document_response_count",
+                0,
+            ),
+
+        "response_3xx_count":
+            runtime_state.get(
+                "response_3xx_count",
+                0,
+            ),
+
+        "response_4xx_count":
+            runtime_state.get(
+                "response_4xx_count",
+                0,
+            ),
+
+        "response_5xx_count":
+            runtime_state.get(
+                "response_5xx_count",
+                0,
+            ),
+
+        "failed_request_count":
+            runtime_state.get(
+                "failed_request_count",
+                0,
+            ),
+
+        "failed_document_request_count":
+            runtime_state.get(
+                "failed_document_request_count",
+                0,
+            ),
+
+        "server_redirect_hops":
+            server_redirect_hops,
+
+        "server_redirect_chain":
+            redirect_chain,
+
+        "initial_response_url":
+            initial_response_url,
+
+        "late_navigation_detected":
+            late_navigation_detected,
+
+        "requested_url":
+            requested_url,
+
+        "observed_final_url":
+            final_url,
+    }
+
+
+# ============================================================
+# BROWSER ERROR RESULT
+# ============================================================
+
+def build_browser_error_result(
+    requested_url: str,
+    final_url: str,
+    title: str,
+    html: str,
+    status_code: int | None,
+    network_requests: list[dict[str, str]],
+    failed_requests: list[dict[str, str]],
+    behavioral_telemetry: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Build a safe record for Chromium-generated error pages.
+
+    Browser error HTML is not passed into our DOM/graph
+    feature extractors because it represents Chromium itself,
+    not the requested website.
+    """
+
+    redirect_metadata = (
+        build_redirect_metadata(
+            requested_url=
+                requested_url,
+
+            final_url=
+                final_url,
+        )
+    )
+
+    return {
+        "crawl_status":
+            "BROWSER_ERROR_PAGE",
+
+        "requested_url":
+            requested_url,
+
+        "requested_domain":
+            redirect_metadata[
+                "requested_domain"
+            ],
+
+        "final_url":
+            final_url,
+
+        "final_domain":
+            "",
+
+        "redirected":
+            False,
+
+        "cross_domain_redirect":
+            False,
+
+        "label_review_required":
+            False,
+
+        "status_code":
+            status_code,
+
+        "title":
+            title,
+
+        "html_length":
+            len(
+                html
+            ),
+
+        # --------------------------------------------
+        # URL / DOMAIN FEATURES
+        #
+        # Chromium's internal error URL must not be
+        # treated as the website's real final URL.
+        # --------------------------------------------
+
+        "url_features":
+            extract_url_features(
+                requested_url=
+                    requested_url,
+
+                final_url=
+                    None,
+            ),
+
+        "behavioral_telemetry":
+            behavioral_telemetry,
+
+        "network_request_count":
+            len(
+                network_requests
+            ),
+
+        "network_requests":
+            network_requests,
+
+        "failed_requests":
+            failed_requests,
+
+        "error_type":
+            "BrowserErrorPage",
+
+        "error":
+            (
+                "Chromium rendered an internal "
+                f"error page: {final_url}"
+            ),
+    }
 
 
 # ============================================================
@@ -511,29 +937,33 @@ def get_stable_page_snapshot(
 
 def crawl_website(
     url: str,
+    label: int | None = None,
 ) -> dict[str, Any]:
     """
-    Dynamically render and analyse a website.
+    Dynamically render and analyse one website.
 
     Collects:
 
-        - Navigation metadata
-        - Redirect/domain metadata
+        - navigation metadata
+        - redirect integrity metadata
+        - URL/domain lexical and structural features
         - DOM structural features
-        - Runtime network behavioral features
-        - Resource dependency graph features
-        - Raw network request information
+        - credential-intent and sensitive-form features
+        - rendered visual screenshot evidence
+        - runtime network features
+        - resource dependency graph features
+        - full serialized graph artifact for GNN training
+        - failed network requests
+        - response status telemetry
+        - server redirect chain
+        - late/client-side navigation information
 
-    The crawler does not submit forms or enter credentials.
+    It does not submit forms or enter credentials.
     """
 
     requested_url = normalize_url(
         url
     )
-
-    # --------------------------------------------------------
-    # Metadata used when navigation never completes
-    # --------------------------------------------------------
 
     failure_redirect_metadata = (
         build_redirect_metadata(
@@ -547,6 +977,41 @@ def crawl_website(
     network_requests: list[
         dict[str, str]
     ] = []
+
+    failed_requests: list[
+        dict[str, str]
+    ] = []
+
+    runtime_state: dict[
+        str,
+        Any,
+    ] = {
+        "response_count":
+            0,
+
+        "main_document_response_count":
+            0,
+
+        "response_3xx_count":
+            0,
+
+        "response_4xx_count":
+            0,
+
+        "response_5xx_count":
+            0,
+
+        "failed_request_count":
+            0,
+
+        "failed_document_request_count":
+            0,
+
+        "last_main_document_response":
+            None,
+    }
+
+    initial_response = None
 
     with sync_playwright() as playwright:
 
@@ -565,7 +1030,7 @@ def crawl_website(
         )
 
         # ====================================================
-        # NETWORK REQUEST CAPTURE
+        # REQUEST CAPTURE
         # ====================================================
 
         def capture_request(
@@ -585,9 +1050,142 @@ def crawl_website(
                 }
             )
 
+        # ====================================================
+        # RESPONSE CAPTURE
+        # ====================================================
+
+        def capture_response(
+            response,
+        ) -> None:
+
+            try:
+
+                status = int(
+                    response.status
+                )
+
+            except Exception:
+                status = 0
+
+            runtime_state[
+                "response_count"
+            ] += 1
+
+            if 300 <= status < 400:
+
+                runtime_state[
+                    "response_3xx_count"
+                ] += 1
+
+            elif 400 <= status < 500:
+
+                runtime_state[
+                    "response_4xx_count"
+                ] += 1
+
+            elif status >= 500:
+
+                runtime_state[
+                    "response_5xx_count"
+                ] += 1
+
+            # ------------------------------------------------
+            # Track the main-frame document response
+            # ------------------------------------------------
+
+            try:
+
+                request = (
+                    response.request
+                )
+
+                is_main_document = (
+                    request.resource_type
+                    == "document"
+                    and request.frame
+                    == page.main_frame
+                )
+
+                if is_main_document:
+
+                    runtime_state[
+                        "main_document_response_count"
+                    ] += 1
+
+                    runtime_state[
+                        "last_main_document_response"
+                    ] = response
+
+            except Exception:
+                pass
+
+        # ====================================================
+        # FAILED REQUEST CAPTURE
+        # ====================================================
+
+        def capture_failed_request(
+            request,
+        ) -> None:
+
+            runtime_state[
+                "failed_request_count"
+            ] += 1
+
+            resource_type = ""
+
+            try:
+                resource_type = (
+                    request.resource_type
+                )
+
+            except Exception:
+                pass
+
+            if resource_type == "document":
+
+                runtime_state[
+                    "failed_document_request_count"
+                ] += 1
+
+            if (
+                len(
+                    failed_requests
+                )
+                >= MAX_FAILED_REQUEST_DETAILS
+            ):
+                return
+
+            failed_requests.append(
+                {
+                    "url":
+                        request.url,
+
+                    "method":
+                        request.method,
+
+                    "resource_type":
+                        resource_type,
+
+                    "failure":
+                        extract_request_failure_text(
+                            request
+                        ),
+                }
+            )
+
         page.on(
             "request",
             capture_request,
+        )
+
+        page.on(
+            "response",
+            capture_response,
+        )
+
+        page.on(
+            "requestfailed",
+            capture_failed_request,
         )
 
         try:
@@ -596,14 +1194,15 @@ def crawl_website(
             # INITIAL NAVIGATION
             # =================================================
 
-            response = page.goto(
+            initial_response = page.goto(
                 requested_url,
                 wait_until="load",
-                timeout=DEFAULT_TIMEOUT_MS,
+                timeout=
+                    DEFAULT_TIMEOUT_MS,
             )
 
             # =================================================
-            # STABLE RENDERED PAGE SNAPSHOT
+            # STABLE SNAPSHOT
             # =================================================
 
             snapshot = (
@@ -625,14 +1224,91 @@ def crawl_website(
             ]
 
             # =================================================
-            # HTTP RESPONSE
+            # MOST RECENT MAIN DOCUMENT RESPONSE
             # =================================================
 
-            status_code = (
-                response.status
-                if response
-                else None
+            final_document_response = (
+                runtime_state.get(
+                    "last_main_document_response"
+                )
+                or initial_response
             )
+
+            status_code = None
+
+            if final_document_response is not None:
+
+                try:
+
+                    status_code = int(
+                        final_document_response.status
+                    )
+
+                except Exception:
+                    status_code = None
+
+            # =================================================
+            # NEW BEHAVIORAL TELEMETRY
+            # =================================================
+
+            behavioral_telemetry = (
+                build_behavioral_telemetry(
+                    runtime_state=
+                        runtime_state,
+
+                    initial_response=
+                        initial_response,
+
+                    final_document_response=
+                        final_document_response,
+
+                    requested_url=
+                        requested_url,
+
+                    final_url=
+                        final_url,
+                )
+            )
+
+            # =================================================
+            # CHROMIUM INTERNAL ERROR PAGE
+            # =================================================
+
+            if is_browser_internal_error_url(
+                final_url
+            ):
+
+                return (
+                    build_browser_error_result(
+                        requested_url=
+                            requested_url,
+
+                        final_url=
+                            final_url,
+
+                        title=
+                            title,
+
+                        html=
+                            html,
+
+                        status_code=
+                            status_code,
+
+                        network_requests=
+                            network_requests,
+
+                        failed_requests=
+                            failed_requests,
+
+                        behavioral_telemetry=
+                            behavioral_telemetry,
+                    )
+                )
+
+            # =================================================
+            # CRAWL STATUS
+            # =================================================
 
             crawl_status = (
                 determine_crawl_status(
@@ -641,11 +1317,54 @@ def crawl_website(
             )
 
             # =================================================
-            # REDIRECT / DOMAIN METADATA
+            # VISUAL SCREENSHOT
+            # =================================================
+            #
+            # Capture only successfully rendered pages.
+            #
+            # The dataset collector passes the known class label
+            # (0 = phishing, 1 = legitimate). Direct CLI crawls
+            # may omit the label, which stores screenshots under
+            # the utility's "unknown" class directory.
+            # =================================================
+
+            visual_features: dict[str, Any] = {}
+
+            if crawl_status == "SUCCESS":
+
+                visual_features = (
+                    capture_page_screenshot(
+                        page=
+                            page,
+
+                        requested_url=
+                            requested_url,
+
+                        label=
+                            label,
+                    )
+                )
+
+            # =================================================
+            # REDIRECT METADATA
             # =================================================
 
             redirect_metadata = (
                 build_redirect_metadata(
+                    requested_url=
+                        requested_url,
+
+                    final_url=
+                        final_url,
+                )
+            )
+
+            # =================================================
+            # URL / DOMAIN FEATURES
+            # =================================================
+
+            url_features = (
+                extract_url_features(
                     requested_url=
                         requested_url,
 
@@ -660,8 +1379,31 @@ def crawl_website(
 
             dom_features = (
                 extract_dom_features(
-                    html=html,
-                    page_url=final_url,
+                    html=
+                        html,
+
+                    page_url=
+                        final_url,
+                )
+            )
+
+            # =================================================
+            # CREDENTIAL INTENT FEATURES
+            # =================================================
+            #
+            # Observational only:
+            # - identifies sensitive input intent
+            # - examines form destinations
+            # - never fills or submits a form
+            # =================================================
+
+            credential_features = (
+                extract_credential_features(
+                    html=
+                        html,
+
+                    page_url=
+                        final_url,
                 )
             )
 
@@ -685,8 +1427,12 @@ def crawl_website(
 
             resource_graph = (
                 build_resource_graph(
-                    html=html,
-                    page_url=final_url,
+                    html=
+                        html,
+
+                    page_url=
+                        final_url,
+
                     network_requests=
                         network_requests,
                 )
@@ -697,6 +1443,41 @@ def crawl_website(
                     resource_graph
                 )
             )
+
+            # =================================================
+            # FULL GRAPH SERIALIZATION
+            # =================================================
+            #
+            # Graph summaries above remain available for ML.
+            # The full node/edge structure below is saved for
+            # future GCN / GraphSAGE / GAT training.
+            #
+            # As with screenshots, only successful rendered
+            # pages are saved as graph artifacts.
+            # =================================================
+
+            graph_artifact: dict[str, Any] = {}
+
+            if crawl_status == "SUCCESS":
+
+                graph_artifact = (
+                    save_resource_graph(
+                        graph=
+                            resource_graph,
+
+                        requested_url=
+                            requested_url,
+
+                        final_url=
+                            final_url,
+
+                        label=
+                            label,
+
+                        graph_features=
+                            graph_features,
+                    )
+                )
 
             # =================================================
             # FINAL RESULT
@@ -744,16 +1525,37 @@ def crawl_website(
                     title,
 
                 "html_length":
-                    len(html),
+                    len(
+                        html
+                    ),
+
+                "url_features":
+                    url_features,
 
                 "dom_features":
                     dom_features,
+
+                "credential_features":
+                    credential_features,
+
+                "visual_features":
+                    visual_features,
 
                 "network_features":
                     network_features,
 
                 "graph_features":
                     graph_features,
+
+                "graph_artifact":
+                    graph_artifact,
+
+                # --------------------------------------------
+                # NEW BEHAVIORAL INFORMATION
+                # --------------------------------------------
+
+                "behavioral_telemetry":
+                    behavioral_telemetry,
 
                 "network_request_count":
                     len(
@@ -762,6 +1564,9 @@ def crawl_website(
 
                 "network_requests":
                     network_requests,
+
+                "failed_requests":
+                    failed_requests,
             }
 
         # ====================================================
@@ -779,6 +1584,15 @@ def crawl_website(
 
                 **failure_redirect_metadata,
 
+                "url_features":
+                    extract_url_features(
+                        requested_url=
+                            requested_url,
+
+                        final_url=
+                            None,
+                    ),
+
                 "error_type":
                     type(
                         exc
@@ -788,10 +1602,13 @@ def crawl_website(
                     str(
                         exc
                     ),
+
+                "failed_requests":
+                    failed_requests,
             }
 
         # ====================================================
-        # PLAYWRIGHT NAVIGATION / BROWSER ERROR
+        # PLAYWRIGHT / BROWSER ERROR
         # ====================================================
 
         except PlaywrightError as exc:
@@ -815,6 +1632,15 @@ def crawl_website(
 
                 **failure_redirect_metadata,
 
+                "url_features":
+                    extract_url_features(
+                        requested_url=
+                            requested_url,
+
+                        final_url=
+                            None,
+                    ),
+
                 "error_type":
                     type(
                         exc
@@ -822,6 +1648,9 @@ def crawl_website(
 
                 "error":
                     error_message,
+
+                "failed_requests":
+                    failed_requests,
             }
 
         # ====================================================
@@ -839,6 +1668,15 @@ def crawl_website(
 
                 **failure_redirect_metadata,
 
+                "url_features":
+                    extract_url_features(
+                        requested_url=
+                            requested_url,
+
+                        final_url=
+                            None,
+                    ),
+
                 "error_type":
                     type(
                         exc
@@ -848,6 +1686,9 @@ def crawl_website(
                     str(
                         exc
                     ),
+
+                "failed_requests":
+                    failed_requests,
             }
 
         finally:
@@ -862,15 +1703,6 @@ def crawl_website(
 # ============================================================
 
 def main() -> None:
-    """
-    Command-line entry point.
-
-    Example:
-
-        python -m \
-        src.website_detection.crawler.crawler \
-        https://www.virtualbox.org/
-    """
 
     if len(
         sys.argv
@@ -883,10 +1715,14 @@ def main() -> None:
             "crawler.crawler <url>"
         )
 
-        sys.exit(1)
+        sys.exit(
+            1
+        )
 
     result = crawl_website(
-        sys.argv[1]
+        sys.argv[
+            1
+        ]
     )
 
     print(

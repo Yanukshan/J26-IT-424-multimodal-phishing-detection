@@ -6,7 +6,13 @@ from typing import Any
 
 import pandas as pd
 
-from src.website_detection.crawler.crawler import crawl_website
+from src.website_detection.behavioral_analysis.network_features import (
+    extract_behavioral_features,
+)
+
+from src.website_detection.crawler.crawler import (
+    crawl_website,
+)
 
 
 # ============================================================
@@ -18,20 +24,82 @@ LABEL_LEGITIMATE = 1
 
 DEFAULT_RANDOM_SEED = 42
 
-
-# ============================================================
-# CONTENT QUALITY CONFIGURATION
-# ============================================================
-
-# Extremely small rendered pages can indicate:
-# - parking pages
-# - placeholder pages
-# - incomplete rendering
-# - historical content drift
-#
-# This is only a REVIEW threshold.
-# It is NOT a phishing threshold.
 MINIMAL_HTML_LENGTH = 1500
+
+
+# ============================================================
+# OPTIONAL SOURCE / PROVENANCE COLUMNS
+# ============================================================
+
+SOURCE_METADATA_COLUMNS = [
+    "source_dataset",
+    "source_id",
+    "source_domain",
+    "source_verified",
+    "source_online",
+    "source_submission_time",
+    "source_verification_time",
+    "source_target",
+    "source_detail_url",
+    "source_loaded_at_utc",
+]
+
+
+# ============================================================
+# URL / DOMAIN FEATURES
+# ============================================================
+
+URL_FEATURES = [
+    "length",
+    "hostname_length",
+    "path_length",
+    "query_length",
+    "fragment_length",
+    "https",
+    "has_query",
+    "has_fragment",
+    "hostname_label_count",
+    "subdomain_depth",
+    "path_depth",
+    "query_parameter_count",
+    "digit_count",
+    "digit_ratio",
+    "letter_count",
+    "letter_ratio",
+    "dot_count",
+    "hyphen_count",
+    "underscore_count",
+    "at_count",
+    "percent_count",
+    "ampersand_count",
+    "equals_count",
+    "special_character_count",
+    "has_ip_hostname",
+    "has_punycode",
+    "has_explicit_port",
+    "has_nonstandard_port",
+    "has_username",
+    "has_password_in_url",
+    "double_slash_in_path",
+    "entropy",
+    "hostname_entropy",
+    "path_entropy",
+    "token_count",
+    "suspicious_token_count",
+    "has_login_token",
+    "has_verify_token",
+    "has_account_token",
+    "has_security_token",
+    "has_payment_token",
+    "redirected",
+    "hostname_changed",
+    "scheme_changed",
+    "final_length",
+    "final_hostname_length",
+    "final_https",
+    "final_subdomain_depth",
+    "final_entropy",
+]
 
 
 # ============================================================
@@ -64,6 +132,55 @@ DOM_FEATURES = [
 
 
 # ============================================================
+# CREDENTIAL INTENT FEATURES
+# ============================================================
+
+CREDENTIAL_FEATURES = [
+    "form_count",
+    "input_count",
+    "email_fields",
+    "password_fields",
+    "otp_fields",
+    "card_fields",
+    "cvv_fields",
+    "expiry_fields",
+    "pin_fields",
+    "bank_fields",
+    "identity_fields",
+    "sensitive_field_count",
+    "financial_field_count",
+    "credential_forms",
+    "external_form_actions",
+    "insecure_form_actions",
+    "empty_form_actions",
+    "external_credential_forms",
+    "insecure_credential_forms",
+    "login_intent_present",
+    "payment_intent_present",
+    "otp_intent_present",
+    "identity_intent_present",
+    "external_sensitive_submission",
+    "insecure_sensitive_submission",
+]
+
+
+# ============================================================
+# VISUAL SCREENSHOT METADATA
+# ============================================================
+
+VISUAL_FEATURES = [
+    "screenshot_saved",
+    "screenshot_path",
+    "screenshot_width",
+    "screenshot_height",
+    "screenshot_file_size",
+    "screenshot_reused",
+    "screenshot_error_type",
+    "screenshot_error",
+]
+
+
+# ============================================================
 # NETWORK FEATURES
 # ============================================================
 
@@ -91,6 +208,27 @@ NETWORK_FEATURES = [
 
 
 # ============================================================
+# NEW BEHAVIORAL FEATURES
+# ============================================================
+
+BEHAVIORAL_FEATURES = [
+    "response_count",
+    "main_document_response_count",
+    "response_3xx_count",
+    "response_4xx_count",
+    "response_5xx_count",
+    "failed_request_count",
+    "failed_document_request_count",
+    "failed_request_detail_count",
+    "failed_request_domain_count",
+    "server_redirect_hops",
+    "server_redirect_chain",
+    "initial_response_url",
+    "late_navigation_detected",
+]
+
+
+# ============================================================
 # GRAPH FEATURES
 # ============================================================
 
@@ -111,32 +249,38 @@ GRAPH_FEATURES = [
 
 
 # ============================================================
-# GRAPH OUTPUT COLUMN HELPER
+# FULL GRAPH ARTIFACT METADATA
 # ============================================================
 
-def get_graph_output_column(feature_name: str) -> str:
-    """
-    Prevent incorrect names such as:
+GRAPH_ARTIFACT_FEATURES = [
+    "artifact_saved",
+    "artifact_path",
+    "artifact_file_size",
+    "artifact_reused",
+    "artifact_schema_version",
+    "artifact_error_type",
+    "artifact_error",
+]
 
-        graph_graph_density
 
-    Examples:
+# ============================================================
+# GRAPH COLUMN HELPER
+# ============================================================
 
-        node_count
-        -> graph_node_count
+def get_graph_output_column(
+    feature_name: str,
+) -> str:
 
-        graph_density
-        -> graph_density
-    """
-
-    if feature_name.startswith("graph_"):
+    if feature_name.startswith(
+        "graph_"
+    ):
         return feature_name
 
     return f"graph_{feature_name}"
 
 
 # ============================================================
-# BASE OUTPUT COLUMNS
+# OUTPUT COLUMNS
 # ============================================================
 
 BASE_COLUMNS = [
@@ -145,6 +289,9 @@ BASE_COLUMNS = [
     "source_url",
     "source_label",
     "class_name",
+
+    # Original dataset provenance
+    *SOURCE_METADATA_COLUMNS,
 
     "collected_at_utc",
 
@@ -160,9 +307,6 @@ BASE_COLUMNS = [
     "cross_domain_redirect",
     "label_review_required",
 
-    # --------------------------------------------------------
-    # NEW DATASET QUALITY FIELDS
-    # --------------------------------------------------------
     "content_review_required",
     "review_reasons",
     "training_candidate",
@@ -177,38 +321,68 @@ BASE_COLUMNS = [
 ]
 
 
-# ============================================================
-# COMPLETE OUTPUT COLUMNS
-# ============================================================
-
 OUTPUT_COLUMNS = (
     BASE_COLUMNS
 
     + [
-        f"dom_{name}"
-        for name in DOM_FEATURES
+        f"url_{feature}"
+        for feature
+        in URL_FEATURES
     ]
 
     + [
-        f"net_{name}"
-        for name in NETWORK_FEATURES
+        f"dom_{feature}"
+        for feature
+        in DOM_FEATURES
     ]
 
     + [
-        get_graph_output_column(name)
-        for name in GRAPH_FEATURES
+        f"cred_{feature}"
+        for feature
+        in CREDENTIAL_FEATURES
+    ]
+
+    + [
+        f"visual_{feature}"
+        for feature
+        in VISUAL_FEATURES
+    ]
+
+    + [
+        f"net_{feature}"
+        for feature
+        in NETWORK_FEATURES
+    ]
+
+    + [
+        f"beh_{feature}"
+        for feature
+        in BEHAVIORAL_FEATURES
+    ]
+
+    + [
+        get_graph_output_column(
+            feature
+        )
+        for feature
+        in GRAPH_FEATURES
+    ]
+
+    + [
+        f"graph_{feature}"
+        for feature
+        in GRAPH_ARTIFACT_FEATURES
     ]
 )
 
 
 # ============================================================
-# LABEL HELPERS
+# LABEL
 # ============================================================
 
-def get_class_name(label: int) -> str:
-    """
-    Convert dataset label into a readable class name.
-    """
+def get_class_name(
+    label: int,
+) -> str:
 
     if label == LABEL_LEGITIMATE:
         return "legitimate"
@@ -220,35 +394,62 @@ def get_class_name(label: int) -> str:
 
 
 # ============================================================
-# SAFE BOOLEAN HELPER
+# BOOLEAN
 # ============================================================
 
-def as_bool(value: Any) -> bool:
-    """
-    Safely convert common values into boolean.
+def as_bool(
+    value: Any,
+) -> bool:
 
-    Prevents problems such as:
-
-        bool("False") == True
-    """
-
-    if isinstance(value, bool):
+    if isinstance(
+        value,
+        bool,
+    ):
         return value
 
     if value is None:
         return False
 
-    if isinstance(value, (int, float)):
-        return bool(value)
+    if isinstance(
+        value,
+        (int, float),
+    ):
+        return bool(
+            value
+        )
 
-    value_text = str(value).strip().lower()
-
-    return value_text in {
+    return str(
+        value
+    ).strip().lower() in {
         "true",
         "1",
         "yes",
         "y",
     }
+
+
+# ============================================================
+# METADATA CLEANING
+# ============================================================
+
+def clean_metadata_value(
+    value: Any,
+) -> Any:
+
+    if value is None:
+        return ""
+
+    try:
+
+        if pd.isna(
+            value
+        ):
+            return ""
+
+    except Exception:
+        pass
+
+    return value
 
 
 # ============================================================
@@ -260,22 +461,14 @@ def detect_parking_page(
     final_url: str,
     external_domains: Any,
 ) -> bool:
-    """
-    Detect common signs that the current website has become
-    a parking / domain holding / lander page.
 
-    IMPORTANT:
-    This does NOT classify a page as phishing.
+    title_lower = str(
+        title or ""
+    ).strip().lower()
 
-    It only marks the sample for dataset-quality review.
-    """
-
-    title_lower = str(title or "").strip().lower()
-    url_lower = str(final_url or "").strip().lower()
-
-    # --------------------------------------------------------
-    # Common parking-title indicators
-    # --------------------------------------------------------
+    url_lower = str(
+        final_url or ""
+    ).strip().lower()
 
     parking_title_indicators = (
         "domain for sale",
@@ -288,43 +481,44 @@ def detect_parking_page(
 
     if any(
         indicator in title_lower
-        for indicator in parking_title_indicators
+        for indicator
+        in parking_title_indicators
     ):
         return True
-
-    # --------------------------------------------------------
-    # Common lander URL
-    # --------------------------------------------------------
 
     if (
-        url_lower.endswith("/lander")
-        or "/parking-lander" in url_lower
+        url_lower.endswith(
+            "/lander"
+        )
+        or "/parking-lander"
+        in url_lower
     ):
         return True
 
-    # --------------------------------------------------------
-    # Normalize external domain values
-    # --------------------------------------------------------
+    if isinstance(
+        external_domains,
+        list,
+    ):
 
-    if isinstance(external_domains, list):
         domains = [
             str(domain).lower()
-            for domain in external_domains
+            for domain
+            in external_domains
         ]
 
     elif external_domains:
+
         domains = [
             domain.strip().lower()
-            for domain in str(external_domains).split("|")
+            for domain
+            in str(
+                external_domains
+            ).split("|")
             if domain.strip()
         ]
 
     else:
         domains = []
-
-    # --------------------------------------------------------
-    # Known parking infrastructure
-    # --------------------------------------------------------
 
     parking_domain_indicators = (
         "parking.godaddy.com",
@@ -335,9 +529,11 @@ def detect_parking_page(
     )
 
     for domain in domains:
+
         if any(
             indicator in domain
-            for indicator in parking_domain_indicators
+            for indicator
+            in parking_domain_indicators
         ):
             return True
 
@@ -345,24 +541,12 @@ def detect_parking_page(
 
 
 # ============================================================
-# CONTENT QUALITY ASSESSMENT
+# CONTENT QUALITY
 # ============================================================
 
 def assess_content_quality(
     result: dict[str, Any],
 ) -> dict[str, Any]:
-    """
-    Determine whether a collected record is suitable for
-    automatic model training.
-
-    This function performs DATASET QUALITY CONTROL only.
-
-    It must never change:
-
-        source_label
-
-    and must never classify a website as phishing.
-    """
 
     crawl_status = str(
         result.get(
@@ -372,36 +556,41 @@ def assess_content_quality(
     ).upper()
 
     # --------------------------------------------------------
-    # Failed crawls are not training candidates
+    # Non-success records never enter training.
     # --------------------------------------------------------
 
     if crawl_status != "SUCCESS":
+
         return {
-            "content_review_required": False,
-            "review_reasons": "",
-            "training_candidate": False,
+            "content_review_required":
+                False,
+
+            "review_reasons":
+                "",
+
+            "training_candidate":
+                False,
         }
 
     reasons: list[str] = []
 
     # --------------------------------------------------------
-    # Cross-domain historical drift
+    # Cross-domain drift
     # --------------------------------------------------------
 
-    cross_domain_redirect = as_bool(
+    if as_bool(
         result.get(
             "cross_domain_redirect",
             False,
         )
-    )
+    ):
 
-    if cross_domain_redirect:
         reasons.append(
             "CROSS_DOMAIN_REDIRECT"
         )
 
     # --------------------------------------------------------
-    # Current page information
+    # Page information
     # --------------------------------------------------------
 
     title = str(
@@ -420,14 +609,13 @@ def assess_content_quality(
         or ""
     ).strip()
 
-    html_length_raw = result.get(
-        "html_length",
-        0,
-    )
-
     try:
+
         html_length = int(
-            html_length_raw
+            result.get(
+                "html_length",
+                0,
+            )
             or 0
         )
 
@@ -435,11 +623,8 @@ def assess_content_quality(
         TypeError,
         ValueError,
     ):
-        html_length = 0
 
-    # --------------------------------------------------------
-    # Minimal / empty rendered page
-    # --------------------------------------------------------
+        html_length = 0
 
     minimal_page = (
         html_length
@@ -450,14 +635,14 @@ def assess_content_quality(
         title == ""
     )
 
-    # Be conservative:
-    #
-    # An empty title alone does not trigger review.
-    # A small page alone does not automatically trigger review.
-    #
-    # Both occurring together are more useful evidence that
-    # the historical URL may no longer represent normal content.
-    if minimal_page and empty_title:
+    # --------------------------------------------------------
+    # Conservative minimal-content review
+    # --------------------------------------------------------
+
+    if (
+        minimal_page
+        and empty_title
+    ):
 
         reasons.append(
             "MINIMAL_PAGE"
@@ -468,7 +653,7 @@ def assess_content_quality(
         )
 
     # --------------------------------------------------------
-    # Parking / lander indicators
+    # Parking / lander
     # --------------------------------------------------------
 
     network_features = result.get(
@@ -476,31 +661,37 @@ def assess_content_quality(
         {},
     )
 
-    external_domains = (
-        network_features.get(
-            "external_domains",
-            [],
-        )
-        if isinstance(
-            network_features,
-            dict,
-        )
-        else []
-    )
+    external_domains = []
 
-    parking_page = detect_parking_page(
-        title=title,
-        final_url=final_url,
-        external_domains=external_domains,
-    )
+    if isinstance(
+        network_features,
+        dict,
+    ):
 
-    if parking_page:
+        external_domains = (
+            network_features.get(
+                "external_domains",
+                [],
+            )
+        )
+
+    if detect_parking_page(
+        title=
+            title,
+
+        final_url=
+            final_url,
+
+        external_domains=
+            external_domains,
+    ):
+
         reasons.append(
             "PARKING_PAGE"
         )
 
     # --------------------------------------------------------
-    # Remove duplicate reasons while preserving order
+    # De-duplicate reasons
     # --------------------------------------------------------
 
     unique_reasons = list(
@@ -516,11 +707,6 @@ def assess_content_quality(
         > 0
     )
 
-    training_candidate = (
-        crawl_status == "SUCCESS"
-        and not content_review_required
-    )
-
     return {
         "content_review_required":
             content_review_required,
@@ -531,20 +717,17 @@ def assess_content_quality(
             ),
 
         "training_candidate":
-            training_candidate,
+            not content_review_required,
     }
 
 
 # ============================================================
-# LOAD DATASET
+# DATASET LOADING
 # ============================================================
 
 def load_dataset(
     input_file: Path,
 ) -> pd.DataFrame:
-    """
-    Load URL and label from PhiUSIIL dataset.
-    """
 
     if not input_file.exists():
 
@@ -554,18 +737,85 @@ def load_dataset(
         )
 
     print()
-    print("Loading dataset...")
+    print(
+        "Loading dataset..."
+    )
 
     print(
         f"File: {input_file}"
     )
 
+    # --------------------------------------------------------
+    # Read header first.
+    #
+    # PhiUSIIL contains many unused columns, so we still avoid
+    # loading the entire original dataset into memory.
+    # --------------------------------------------------------
+
+    header = pd.read_csv(
+        input_file,
+        nrows=0,
+    )
+
+    available_columns = set(
+        header.columns
+    )
+
+    required_columns = {
+        "URL",
+        "label",
+    }
+
+    missing = (
+        required_columns
+        - available_columns
+    )
+
+    if missing:
+
+        raise ValueError(
+            "Missing required dataset column(s): "
+            + ", ".join(
+                sorted(
+                    missing
+                )
+            )
+        )
+
+    available_metadata = [
+        column
+        for column
+        in SOURCE_METADATA_COLUMNS
+        if column
+        in available_columns
+    ]
+
+    use_columns = [
+        "URL",
+        "label",
+        *available_metadata,
+    ]
+
+    dtype_map = {
+        "URL":
+            str,
+    }
+
+    for column in available_metadata:
+        dtype_map[
+            column
+        ] = str
+
     dataframe = pd.read_csv(
         input_file,
-        usecols=[
-            "URL",
-            "label",
-        ],
+        usecols=
+            use_columns,
+
+        dtype=
+            dtype_map,
+
+        keep_default_na=
+            False,
     )
 
     print(
@@ -573,19 +823,17 @@ def load_dataset(
         f"{len(dataframe):,}"
     )
 
-    # --------------------------------------------------------
-    # Remove missing values
-    # --------------------------------------------------------
+    if available_metadata:
 
-    dataframe = dataframe.dropna(
-        subset=[
-            "URL",
-            "label",
-        ]
-    ).copy()
+        print(
+            "Source metadata loaded: "
+            + ", ".join(
+                available_metadata
+            )
+        )
 
     # --------------------------------------------------------
-    # Normalize URL strings
+    # Normalize URL
     # --------------------------------------------------------
 
     dataframe[
@@ -598,12 +846,6 @@ def load_dataset(
         .str.strip()
     )
 
-    dataframe = dataframe[
-        dataframe[
-            "URL"
-        ] != ""
-    ].copy()
-
     # --------------------------------------------------------
     # Normalize labels
     # --------------------------------------------------------
@@ -614,26 +856,30 @@ def load_dataset(
         dataframe[
             "label"
         ],
-        errors="coerce",
+        errors=
+            "coerce",
     )
 
     dataframe = dataframe.dropna(
         subset=[
-            "label"
+            "URL",
+            "label",
         ]
     ).copy()
 
+    dataframe = dataframe[
+        dataframe[
+            "URL"
+        ] != ""
+    ].copy()
+
     dataframe[
         "label"
-    ] = (
-        dataframe[
-            "label"
-        ].astype(int)
+    ] = dataframe[
+        "label"
+    ].astype(
+        int
     )
-
-    # --------------------------------------------------------
-    # Valid labels only
-    # --------------------------------------------------------
 
     dataframe = dataframe[
         dataframe[
@@ -647,7 +893,7 @@ def load_dataset(
     ].copy()
 
     # --------------------------------------------------------
-    # Remove duplicate URLs
+    # Deduplicate URLs
     # --------------------------------------------------------
 
     before_duplicates = len(
@@ -660,10 +906,12 @@ def load_dataset(
             subset=[
                 "URL"
             ],
-            keep="first",
+            keep=
+                "first",
         )
         .reset_index(
-            drop=True
+            drop=
+                True
         )
     )
 
@@ -684,22 +932,22 @@ def load_dataset(
         f"{len(dataframe):,}"
     )
 
-    legitimate_count = len(
-        dataframe[
+    legitimate_count = int(
+        (
             dataframe[
                 "label"
             ]
             == LABEL_LEGITIMATE
-        ]
+        ).sum()
     )
 
-    phishing_count = len(
-        dataframe[
+    phishing_count = int(
+        (
             dataframe[
                 "label"
             ]
             == LABEL_PHISHING
-        ]
+        ).sum()
     )
 
     print()
@@ -727,17 +975,6 @@ def select_samples(
     count: int,
     random_seed: int,
 ) -> pd.DataFrame:
-    """
-    Select legitimate, phishing or balanced samples.
-
-    Balanced mode:
-        --count 20
-
-    means:
-        20 legitimate
-        20 phishing
-        40 total
-    """
 
     legitimate = dataframe[
         dataframe[
@@ -753,10 +990,6 @@ def select_samples(
         == LABEL_PHISHING
     ]
 
-    # --------------------------------------------------------
-    # Legitimate
-    # --------------------------------------------------------
-
     if mode == "legitimate":
 
         sample_count = min(
@@ -767,14 +1000,12 @@ def select_samples(
         )
 
         selected = legitimate.sample(
-            n=sample_count,
+            n=
+                sample_count,
+
             random_state=
                 random_seed,
         )
-
-    # --------------------------------------------------------
-    # Phishing
-    # --------------------------------------------------------
 
     elif mode == "phishing":
 
@@ -786,14 +1017,12 @@ def select_samples(
         )
 
         selected = phishing.sample(
-            n=sample_count,
+            n=
+                sample_count,
+
             random_state=
                 random_seed,
         )
-
-    # --------------------------------------------------------
-    # Balanced
-    # --------------------------------------------------------
 
     elif mode == "balanced":
 
@@ -811,20 +1040,20 @@ def select_samples(
             ),
         )
 
-        legitimate_sample = (
-            legitimate.sample(
-                n=legitimate_count,
-                random_state=
-                    random_seed,
-            )
+        legitimate_sample = legitimate.sample(
+            n=
+                legitimate_count,
+
+            random_state=
+                random_seed,
         )
 
-        phishing_sample = (
-            phishing.sample(
-                n=phishing_count,
-                random_state=
-                    random_seed,
-            )
+        phishing_sample = phishing.sample(
+            n=
+                phishing_count,
+
+            random_state=
+                random_seed,
         )
 
         selected = pd.concat(
@@ -832,7 +1061,8 @@ def select_samples(
                 legitimate_sample,
                 phishing_sample,
             ],
-            ignore_index=True,
+            ignore_index=
+                True,
         )
 
     else:
@@ -842,22 +1072,47 @@ def select_samples(
             f"{mode}"
         )
 
-    # --------------------------------------------------------
-    # Shuffle selected records
-    # --------------------------------------------------------
-
-    selected = (
+    return (
         selected.sample(
-            frac=1,
+            frac=
+                1,
+
             random_state=
                 random_seed,
         )
         .reset_index(
-            drop=True
+            drop=
+                True
         )
     )
 
-    return selected
+
+# ============================================================
+# SOURCE METADATA
+# ============================================================
+
+def extract_source_metadata(
+    sample: pd.Series,
+) -> dict[str, Any]:
+
+    metadata = {}
+
+    for column in SOURCE_METADATA_COLUMNS:
+
+        value = ""
+
+        if column in sample.index:
+            value = sample[
+                column
+            ]
+
+        metadata[
+            column
+        ] = clean_metadata_value(
+            value
+        )
+
+    return metadata
 
 
 # ============================================================
@@ -869,18 +1124,18 @@ def flatten_result(
     source_url: str,
     label: int,
     result: dict[str, Any],
+    source_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """
-    Convert crawler result into one flat CSV row.
-    """
 
     row: dict[str, Any] = {
-        column: ""
-        for column in OUTPUT_COLUMNS
+        column:
+            ""
+        for column
+        in OUTPUT_COLUMNS
     }
 
     # --------------------------------------------------------
-    # Dataset source metadata
+    # Source information
     # --------------------------------------------------------
 
     row[
@@ -901,6 +1156,19 @@ def flatten_result(
         label
     )
 
+    if source_metadata:
+
+        for column in SOURCE_METADATA_COLUMNS:
+
+            row[
+                column
+            ] = clean_metadata_value(
+                source_metadata.get(
+                    column,
+                    "",
+                )
+            )
+
     row[
         "collected_at_utc"
     ] = datetime.now(
@@ -911,64 +1179,31 @@ def flatten_result(
     # Crawl metadata
     # --------------------------------------------------------
 
-    row[
-        "crawl_status"
-    ] = result.get(
+    for column in [
         "crawl_status",
-        "",
-    )
-
-    row[
-        "requested_url"
-    ] = result.get(
         "requested_url",
-        "",
-    )
-
-    row[
-        "requested_domain"
-    ] = result.get(
         "requested_domain",
-        "",
-    )
-
-    row[
-        "final_url"
-    ] = result.get(
         "final_url",
-        "",
-    )
-
-    row[
-        "final_domain"
-    ] = result.get(
         "final_domain",
-        "",
-    )
-
-    row[
-        "redirected"
-    ] = result.get(
         "redirected",
-        "",
-    )
-
-    row[
-        "cross_domain_redirect"
-    ] = result.get(
         "cross_domain_redirect",
-        "",
-    )
-
-    row[
-        "label_review_required"
-    ] = result.get(
         "label_review_required",
-        "",
-    )
+        "status_code",
+        "title",
+        "html_length",
+        "error_type",
+        "error",
+    ]:
+
+        row[
+            column
+        ] = result.get(
+            column,
+            "",
+        )
 
     # --------------------------------------------------------
-    # NEW CONTENT QUALITY ASSESSMENT
+    # Content quality
     # --------------------------------------------------------
 
     quality = assess_content_quality(
@@ -993,53 +1228,44 @@ def flatten_result(
         "training_candidate"
     ]
 
-    # --------------------------------------------------------
-    # Response information
-    # --------------------------------------------------------
+    # ========================================================
+    # URL / DOMAIN
+    # ========================================================
 
-    row[
-        "status_code"
-    ] = result.get(
-        "status_code",
-        "",
+    url_features = result.get(
+        "url_features",
+        {},
     )
 
-    row[
-        "title"
-    ] = result.get(
-        "title",
-        "",
-    )
+    if not isinstance(
+        url_features,
+        dict,
+    ):
+        url_features = {}
 
-    row[
-        "html_length"
-    ] = result.get(
-        "html_length",
-        "",
-    )
+    for feature in URL_FEATURES:
 
-    row[
-        "error_type"
-    ] = result.get(
-        "error_type",
-        "",
-    )
-
-    row[
-        "error"
-    ] = result.get(
-        "error",
-        "",
-    )
+        row[
+            f"url_{feature}"
+        ] = url_features.get(
+            feature,
+            "",
+        )
 
     # ========================================================
-    # DOM FEATURES
+    # DOM
     # ========================================================
 
     dom_features = result.get(
         "dom_features",
         {},
     )
+
+    if not isinstance(
+        dom_features,
+        dict,
+    ):
+        dom_features = {}
 
     for feature in DOM_FEATURES:
 
@@ -1051,13 +1277,67 @@ def flatten_result(
         )
 
     # ========================================================
-    # NETWORK FEATURES
+    # CREDENTIAL INTENT
+    # ========================================================
+
+    credential_features = result.get(
+        "credential_features",
+        {},
+    )
+
+    if not isinstance(
+        credential_features,
+        dict,
+    ):
+        credential_features = {}
+
+    for feature in CREDENTIAL_FEATURES:
+
+        row[
+            f"cred_{feature}"
+        ] = credential_features.get(
+            feature,
+            "",
+        )
+
+    # ========================================================
+    # VISUAL SCREENSHOT METADATA
+    # ========================================================
+
+    visual_features = result.get(
+        "visual_features",
+        {},
+    )
+
+    if not isinstance(
+        visual_features,
+        dict,
+    ):
+        visual_features = {}
+
+    for feature in VISUAL_FEATURES:
+
+        row[
+            f"visual_{feature}"
+        ] = visual_features.get(
+            feature,
+            "",
+        )
+
+    # ========================================================
+    # NETWORK
     # ========================================================
 
     network_features = result.get(
         "network_features",
         {},
     )
+
+    if not isinstance(
+        network_features,
+        dict,
+    ):
+        network_features = {}
 
     for feature in NETWORK_FEATURES:
 
@@ -1066,9 +1346,47 @@ def flatten_result(
             "",
         )
 
-        # ----------------------------------------------------
-        # Convert domain list into CSV-friendly string
-        # ----------------------------------------------------
+        if isinstance(
+            value,
+            list,
+        ):
+
+            value = "|".join(
+                str(item)
+                for item
+                in value
+            )
+
+        row[
+            f"net_{feature}"
+        ] = value
+
+    # ========================================================
+    # NEW BEHAVIORAL TELEMETRY
+    # ========================================================
+
+    behavioral_features = (
+        extract_behavioral_features(
+            behavioral_telemetry=
+                result.get(
+                    "behavioral_telemetry",
+                    {},
+                ),
+
+            failed_requests=
+                result.get(
+                    "failed_requests",
+                    [],
+                ),
+        )
+    )
+
+    for feature in BEHAVIORAL_FEATURES:
+
+        value = behavioral_features.get(
+            feature,
+            "",
+        )
 
         if isinstance(
             value,
@@ -1077,15 +1395,16 @@ def flatten_result(
 
             value = "|".join(
                 str(item)
-                for item in value
+                for item
+                in value
             )
 
         row[
-            f"net_{feature}"
+            f"beh_{feature}"
         ] = value
 
     # ========================================================
-    # GRAPH FEATURES
+    # GRAPH
     # ========================================================
 
     graph_features = result.get(
@@ -1093,17 +1412,43 @@ def flatten_result(
         {},
     )
 
+    if not isinstance(
+        graph_features,
+        dict,
+    ):
+        graph_features = {}
+
     for feature in GRAPH_FEATURES:
 
-        output_column = (
+        row[
             get_graph_output_column(
                 feature
             )
+        ] = graph_features.get(
+            feature,
+            "",
         )
 
+    # ========================================================
+    # FULL GRAPH ARTIFACT
+    # ========================================================
+
+    graph_artifact = result.get(
+        "graph_artifact",
+        {},
+    )
+
+    if not isinstance(
+        graph_artifact,
+        dict,
+    ):
+        graph_artifact = {}
+
+    for feature in GRAPH_ARTIFACT_FEATURES:
+
         row[
-            output_column
-        ] = graph_features.get(
+            f"graph_{feature}"
+        ] = graph_artifact.get(
             feature,
             "",
         )
@@ -1112,25 +1457,74 @@ def flatten_result(
 
 
 # ============================================================
-# INITIALIZE OUTPUT CSV
+# OUTPUT INITIALIZATION
 # ============================================================
+
+def validate_existing_output_schema(
+    output_file: Path,
+) -> None:
+
+    with output_file.open(
+        "r",
+        encoding=
+            "utf-8",
+        newline="",
+    ) as file:
+
+        reader = csv.reader(
+            file
+        )
+
+        try:
+            header = next(
+                reader
+            )
+
+        except StopIteration:
+
+            raise ValueError(
+                "Resume file exists but has no CSV header."
+            )
+
+    if header != OUTPUT_COLUMNS:
+
+        raise ValueError(
+            "Cannot resume because the existing output CSV "
+            "uses a different schema. Use a new output filename."
+        )
+
 
 def initialize_output_file(
     output_file: Path,
+    resume: bool,
 ) -> None:
-    """
-    Create output CSV and write the header.
-    """
 
     output_file.parent.mkdir(
-        parents=True,
-        exist_ok=True,
+        parents=
+            True,
+
+        exist_ok=
+            True,
     )
+
+    if (
+        resume
+        and output_file.exists()
+    ):
+
+        validate_existing_output_schema(
+            output_file
+        )
+
+        return
 
     with output_file.open(
         "w",
-        newline="",
-        encoding="utf-8",
+        newline=
+            "",
+
+        encoding=
+            "utf-8",
     ) as file:
 
         writer = csv.DictWriter(
@@ -1143,22 +1537,90 @@ def initialize_output_file(
 
 
 # ============================================================
-# APPEND ONE RESULT
+# RESUME STATE
+# ============================================================
+
+def load_resume_state(
+    output_file: Path,
+) -> tuple[
+    set[str],
+    int,
+    int,
+]:
+
+    if not output_file.exists():
+
+        return (
+            set(),
+            0,
+            0,
+        )
+
+    dataframe = pd.read_csv(
+        output_file,
+        usecols=[
+            "sample_id",
+            "source_url",
+        ],
+    )
+
+    if dataframe.empty:
+
+        return (
+            set(),
+            0,
+            0,
+        )
+
+    existing_urls = set(
+        dataframe[
+            "source_url"
+        ]
+        .dropna()
+        .astype(str)
+    )
+
+    sample_ids = pd.to_numeric(
+        dataframe[
+            "sample_id"
+        ],
+        errors=
+            "coerce",
+    )
+
+    max_sample_id = (
+        int(
+            sample_ids.max()
+        )
+        if sample_ids.notna().any()
+        else 0
+    )
+
+    return (
+        existing_urls,
+        max_sample_id,
+        len(
+            dataframe
+        ),
+    )
+
+
+# ============================================================
+# APPEND RESULT
 # ============================================================
 
 def append_result(
     output_file: Path,
     row: dict[str, Any],
 ) -> None:
-    """
-    Append immediately so results already collected are not
-    lost if the collection is interrupted.
-    """
 
     with output_file.open(
         "a",
-        newline="",
-        encoding="utf-8",
+        newline=
+            "",
+
+        encoding=
+            "utf-8",
     ) as file:
 
         writer = csv.DictWriter(
@@ -1173,28 +1635,63 @@ def append_result(
 
 
 # ============================================================
-# DATA COLLECTION
+# COLLECTION
 # ============================================================
 
 def collect_dataset(
     selected_samples: pd.DataFrame,
     output_file: Path,
+    resume: bool = False,
 ) -> None:
-    """
-    Crawl selected URLs and persist feature records.
-    """
 
     initialize_output_file(
-        output_file
+        output_file=
+            output_file,
+
+        resume=
+            resume,
     )
 
-    total = len(
+    existing_urls: set[str] = set()
+    last_sample_id = 0
+    existing_row_count = 0
+
+    if resume:
+
+        (
+            existing_urls,
+            last_sample_id,
+            existing_row_count,
+        ) = load_resume_state(
+            output_file
+        )
+
+    pending_samples = (
+        selected_samples[
+            ~selected_samples[
+                "URL"
+            ]
+            .astype(str)
+            .isin(
+                existing_urls
+            )
+        ]
+        .reset_index(
+            drop=
+                True
+        )
+    )
+
+    total_selected = len(
         selected_samples
+    )
+
+    total_pending = len(
+        pending_samples
     )
 
     success_count = 0
     failure_count = 0
-
     label_review_count = 0
     content_review_count = 0
     training_candidate_count = 0
@@ -1214,8 +1711,20 @@ def collect_dataset(
 
     print(
         f"Samples selected: "
-        f"{total}"
+        f"{total_selected}"
     )
+
+    if resume:
+
+        print(
+            f"Already collected: "
+            f"{existing_row_count}"
+        )
+
+        print(
+            f"Remaining this run: "
+            f"{total_pending}"
+        )
 
     print(
         f"Output: "
@@ -1228,16 +1737,26 @@ def collect_dataset(
 
     print()
 
+    if total_pending == 0:
+
+        print(
+            "No remaining URLs to collect."
+        )
+
+        return
+
     # ========================================================
-    # PROCESS EACH SAMPLE
+    # PROCESS
     # ========================================================
 
     for index, sample in (
-        selected_samples.iterrows()
+        pending_samples.iterrows()
     ):
 
         sample_id = (
-            index + 1
+            last_sample_id
+            + index
+            + 1
         )
 
         url = str(
@@ -1252,14 +1771,18 @@ def collect_dataset(
             ]
         )
 
-        class_name = (
-            get_class_name(
-                label
+        class_name = get_class_name(
+            label
+        )
+
+        source_metadata = (
+            extract_source_metadata(
+                sample
             )
         )
 
         print(
-            f"[{sample_id}/{total}] "
+            f"[{index + 1}/{total_pending}] "
             f"{class_name.upper()}"
         )
 
@@ -1269,12 +1792,12 @@ def collect_dataset(
 
         try:
 
-            # ------------------------------------------------
-            # Crawl website
-            # ------------------------------------------------
-
             result = crawl_website(
-                url
+                url=
+                    url,
+
+                label=
+                    label,
             )
 
             status = str(
@@ -1283,10 +1806,6 @@ def collect_dataset(
                     "UNKNOWN",
                 )
             )
-
-            # ------------------------------------------------
-            # Flatten + quality assessment
-            # ------------------------------------------------
 
             row = flatten_result(
                 sample_id=
@@ -1300,20 +1819,18 @@ def collect_dataset(
 
                 result=
                     result,
-            )
 
-            # ------------------------------------------------
-            # Save immediately
-            # ------------------------------------------------
+                source_metadata=
+                    source_metadata,
+            )
 
             append_result(
-                output_file,
-                row,
-            )
+                output_file=
+                    output_file,
 
-            # ------------------------------------------------
-            # Statistics
-            # ------------------------------------------------
+                row=
+                    row,
+            )
 
             if status == "SUCCESS":
                 success_count += 1
@@ -1327,7 +1844,6 @@ def collect_dataset(
                     False,
                 )
             ):
-
                 label_review_count += 1
 
             if as_bool(
@@ -1336,7 +1852,6 @@ def collect_dataset(
                     False,
                 )
             ):
-
                 content_review_count += 1
 
             if as_bool(
@@ -1345,15 +1860,11 @@ def collect_dataset(
                     False,
                 )
             ):
-
                 training_candidate_count += 1
 
-            # ------------------------------------------------
-            # Console status
-            # ------------------------------------------------
-
             print(
-                f"Status: {status}"
+                f"Status: "
+                f"{status}"
             )
 
             if as_bool(
@@ -1386,26 +1897,19 @@ def collect_dataset(
                     f"{row.get('review_reasons', '')}"
                 )
 
-            if as_bool(
-                row.get(
-                    "training_candidate",
-                    False,
+            print(
+                "Training candidate: "
+                + (
+                    "YES"
+                    if as_bool(
+                        row.get(
+                            "training_candidate",
+                            False,
+                        )
+                    )
+                    else "NO"
                 )
-            ):
-
-                print(
-                    "Training candidate: YES"
-                )
-
-            else:
-
-                print(
-                    "Training candidate: NO"
-                )
-
-        # ====================================================
-        # USER INTERRUPT
-        # ====================================================
+            )
 
         except KeyboardInterrupt:
 
@@ -1415,15 +1919,10 @@ def collect_dataset(
             )
 
             print(
-                "Already collected results "
-                "remain saved."
+                "Already collected results remain saved."
             )
 
             break
-
-        # ====================================================
-        # COLLECTOR-LEVEL FAILURE
-        # ====================================================
 
         except Exception as exc:
 
@@ -1459,11 +1958,17 @@ def collect_dataset(
 
                 result=
                     result,
+
+                source_metadata=
+                    source_metadata,
             )
 
             append_result(
-                output_file,
-                row,
+                output_file=
+                    output_file,
+
+                row=
+                    row,
             )
 
             print(
@@ -1480,7 +1985,7 @@ def collect_dataset(
         )
 
     # ========================================================
-    # FINAL COLLECTION SUMMARY
+    # SUMMARY
     # ========================================================
 
     print()
@@ -1533,13 +2038,10 @@ def collect_dataset(
 
 
 # ============================================================
-# COMMAND-LINE ARGUMENTS
+# CLI
 # ============================================================
 
 def parse_arguments() -> argparse.Namespace:
-    """
-    Parse command-line configuration.
-    """
 
     parser = argparse.ArgumentParser(
         description=(
@@ -1554,9 +2056,6 @@ def parse_arguments() -> argparse.Namespace:
             "data/raw/"
             "PhiUSIIL_Phishing_URL_Dataset.csv"
         ),
-        help=(
-            "Path to PhiUSIIL dataset CSV."
-        ),
     )
 
     parser.add_argument(
@@ -1564,9 +2063,6 @@ def parse_arguments() -> argparse.Namespace:
         default=(
             "data/processed/"
             "website_pilot_dataset.csv"
-        ),
-        help=(
-            "Output CSV path."
         ),
     )
 
@@ -1577,20 +2073,37 @@ def parse_arguments() -> argparse.Namespace:
             "phishing",
             "balanced",
         ],
-        default="legitimate",
+        default=
+            "legitimate",
     )
 
     parser.add_argument(
         "--count",
-        type=int,
-        default=10,
+        type=
+            int,
+
+        default=
+            10,
     )
 
     parser.add_argument(
         "--seed",
-        type=int,
+        type=
+            int,
+
         default=
             DEFAULT_RANDOM_SEED,
+    )
+
+    parser.add_argument(
+        "--resume",
+        action=
+            "store_true",
+
+        help=(
+            "Resume an interrupted collection using the "
+            "same output CSV and sampling configuration."
+        ),
     )
 
     return parser.parse_args()
@@ -1601,32 +2114,20 @@ def parse_arguments() -> argparse.Namespace:
 # ============================================================
 
 def main() -> None:
-    """
-    Dataset collector command-line entry point.
-    """
 
     args = parse_arguments()
 
     if args.count <= 0:
 
         raise ValueError(
-            "--count must be "
-            "greater than zero."
+            "--count must be greater than zero."
         )
-
-    # --------------------------------------------------------
-    # Load source URLs
-    # --------------------------------------------------------
 
     dataframe = load_dataset(
         Path(
             args.input
         )
     )
-
-    # --------------------------------------------------------
-    # Select sample
-    # --------------------------------------------------------
 
     selected_samples = select_samples(
         dataframe=
@@ -1642,12 +2143,7 @@ def main() -> None:
             args.seed,
     )
 
-    # --------------------------------------------------------
-    # Print distribution
-    # --------------------------------------------------------
-
     print()
-
     print(
         "Selected sample distribution:"
     )
@@ -1670,10 +2166,6 @@ def main() -> None:
             f"{count}"
         )
 
-    # --------------------------------------------------------
-    # Start collection
-    # --------------------------------------------------------
-
     collect_dataset(
         selected_samples=
             selected_samples,
@@ -1682,6 +2174,9 @@ def main() -> None:
             Path(
                 args.output
             ),
+
+        resume=
+            args.resume,
     )
 
 
