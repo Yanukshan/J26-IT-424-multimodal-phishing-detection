@@ -50,3 +50,19 @@ def normalize_url(url: str) -> str:
             cut = min(cut, i)
     u = u[:cut].lower() + u[cut:]
     return u.rstrip("/")
+
+
+def get_host(url: str) -> str:
+    """Hostname without port or "www.", lowercased. Empty string if none."""
+    u = (url or "").strip()
+    if not has_scheme(u):
+        u = "http://" + u
+    try:
+        host = urlsplit(u).hostname or ""
+    except ValueError:
+        # e.g. "Invalid IPv6 URL": take text up to the first / ? # :
+        host = re.split(r"[/?#:]", _SCHEME_RE.sub("", u), maxsplit=1)[0]
+    host = host.strip(".").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host
