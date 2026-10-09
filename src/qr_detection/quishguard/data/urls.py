@@ -28,3 +28,25 @@ except Exception:  # pragma: no cover - fallback path
 
 def has_scheme(url: str) -> bool:
     return bool(_SCHEME_RE.match(url or ""))
+
+
+def normalize_url(url: str) -> str:
+    """Remove the parts of a URL that reflect how the dataset was collected.
+
+    In CIC-Trap4Phish, 91% of benign URLs have no scheme but only 37% of
+    malicious ones do not, so "starts with http://" would be a shortcut.
+    We strip the scheme and a leading "www.", lowercase the host, and drop a
+    trailing slash. Path and query keep their case.
+    """
+    u = (url or "").strip()
+    u = _SCHEME_RE.sub("", u)
+    if u.lower().startswith("www."):
+        u = u[4:]
+    # lowercase the host part only
+    cut = len(u)
+    for ch in "/?#":
+        i = u.find(ch)
+        if i != -1:
+            cut = min(cut, i)
+    u = u[:cut].lower() + u[cut:]
+    return u.rstrip("/")
