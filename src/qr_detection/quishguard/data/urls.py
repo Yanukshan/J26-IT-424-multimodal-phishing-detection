@@ -17,3 +17,14 @@ _TWO_PART_SUFFIXES = {
     "com.mx", "com.ar", "com.tr", "com.pk", "com.ng", "co.id", "co.kr",
     "ac.lk", "com.lk", "gov.lk", "edu.lk", "org.lk", "co.il", "com.ua", "com.ru",
 }
+
+try:  # tldextract gives correct registered domains; use its bundled list, no network
+    import tldextract
+
+    _EXTRACT = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
+except Exception:  # pragma: no cover - fallback path
+    _EXTRACT = None
+
+
+def has_scheme(url: str) -> bool:
+    return bool(_SCHEME_RE.match(url or ""))
