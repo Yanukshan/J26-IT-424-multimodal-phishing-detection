@@ -66,3 +66,11 @@ def get_host(url: str) -> str:
     if host.startswith("www."):
         host = host[4:]
     return host
+
+
+def is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
+        return False
