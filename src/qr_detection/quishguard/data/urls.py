@@ -10,3 +10,10 @@ from urllib.parse import urlsplit
 _SCHEME_RE = re.compile(r"^\s*[a-z][a-z0-9+.\-]{0,15}://", re.IGNORECASE)
 
 # Used only when tldextract is not installed.
+_TWO_PART_SUFFIXES = {
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au", "co.nz",
+    "co.jp", "ne.jp", "or.jp", "co.in", "net.in", "org.in", "co.za", "com.br",
+    "com.cn", "net.cn", "org.cn", "com.tw", "com.hk", "com.sg", "com.my",
+    "com.mx", "com.ar", "com.tr", "com.pk", "com.ng", "co.id", "co.kr",
+    "ac.lk", "com.lk", "gov.lk", "edu.lk", "org.lk", "co.il", "com.ua", "com.ru",
+}
