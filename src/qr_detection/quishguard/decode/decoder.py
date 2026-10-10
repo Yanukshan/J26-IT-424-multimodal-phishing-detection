@@ -72,3 +72,17 @@ def _try_opencv(gray: np.ndarray):
     if text:
         return text, (pts.reshape(-1, 2) if pts is not None else None)
     return None, None
+
+
+def _try_pyzbar(gray: np.ndarray):
+    if _pyzbar is None:
+        return None, None
+    try:
+        results = _pyzbar.decode(gray, symbols=[_pyzbar.ZBarSymbol.QRCODE])
+    except Exception:
+        return None, None
+    for r in results:
+        text = r.data.decode("utf-8", errors="replace")
+        pts = np.array([(p.x, p.y) for p in r.polygon], dtype=np.float32)
+        return text, (pts if len(pts) == 4 else None)
+    return None, None
