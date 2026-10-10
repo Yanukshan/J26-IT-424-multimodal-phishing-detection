@@ -29,3 +29,11 @@ ImageLike = Union[str, Path, np.ndarray, "PIL.Image.Image"]  # noqa: F821
 PAD = 24  # CIC images have no white quiet zone; decoders need one
 
 
+@dataclass
+class DecodeResult:
+    ok: bool
+    text: Optional[str] = None
+    payload_type: str = "none"
+    method: Optional[str] = None
+    corners: Optional[np.ndarray] = field(default=None, repr=False)  # 4x2, in padded image
+    image: Optional[np.ndarray] = field(default=None, repr=False)    # padded grayscale
