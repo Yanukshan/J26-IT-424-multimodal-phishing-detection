@@ -74,3 +74,21 @@ def is_ip(host: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+@lru_cache(maxsize=500_000)
+def registered_domain(host: str) -> str:
+    """"login.paypal.com.evil.co.uk" -> "evil.co.uk". IPs are returned as-is."""
+    if not host:
+        return ""
+    if is_ip(host):
+        return host
+    if _EXTRACT is not None:
+        ext = _EXTRACT(host)
+        if ext.domain and ext.suffix:
+            return f"{ext.domain}.{ext.suffix}"
+        return ext.domain or host
+    parts = host.split(".")
+    if len(parts) >= 3 and ".".join(parts[-2:]) in _TWO_PART_SUFFIXES:
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:])
