@@ -59,3 +59,16 @@ def to_gray(img: ImageLike) -> np.ndarray:
 
 def add_quiet_zone(gray: np.ndarray, pad: int = PAD) -> np.ndarray:
     return cv2.copyMakeBorder(gray, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
+
+
+def _try_opencv(gray: np.ndarray):
+    det = cv2.QRCodeDetector()
+    try:
+        text, pts, _ = det.detectAndDecode(gray)
+    except cv2.error:
+        # Some OpenCV builds (e.g. 5.0 on Colab) raise an internal assertion on
+        # damaged/tampered codes instead of returning "not found". Treat as unreadable.
+        return None, None
+    if text:
+        return text, (pts.reshape(-1, 2) if pts is not None else None)
+    return None, None
