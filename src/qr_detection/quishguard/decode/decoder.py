@@ -55,3 +55,7 @@ def to_gray(img: ImageLike) -> np.ndarray:
     if arr.dtype == bool:
         arr = arr.astype(np.uint8) * 255
     return arr.astype(np.uint8)
+
+
+def add_quiet_zone(gray: np.ndarray, pad: int = PAD) -> np.ndarray:
+    return cv2.copyMakeBorder(gray, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
