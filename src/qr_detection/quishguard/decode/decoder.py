@@ -37,3 +37,21 @@ class DecodeResult:
     method: Optional[str] = None
     corners: Optional[np.ndarray] = field(default=None, repr=False)  # 4x2, in padded image
     image: Optional[np.ndarray] = field(default=None, repr=False)    # padded grayscale
+
+
+def to_gray(img: ImageLike) -> np.ndarray:
+    """Load any supported input as a uint8 grayscale array."""
+    if isinstance(img, (str, Path)):
+        arr = cv2.imdecode(np.fromfile(str(img), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        if arr is None:
+            raise ValueError(f"Cannot read image: {img}")
+        return arr
+    if isinstance(img, np.ndarray):
+        arr = img
+    else:  # PIL image (mode "1" for CIC images)
+        arr = np.array(img.convert("L"))
+    if arr.ndim == 3:
+        arr = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+    if arr.dtype == bool:
+        arr = arr.astype(np.uint8) * 255
+    return arr.astype(np.uint8)
