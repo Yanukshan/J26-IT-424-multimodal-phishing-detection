@@ -86,3 +86,19 @@ def _try_pyzbar(gray: np.ndarray):
         pts = np.array([(p.x, p.y) for p in r.polygon], dtype=np.float32)
         return text, (pts if len(pts) == 4 else None)
     return None, None
+
+
+def _try_zxing(gray: np.ndarray):
+    if _zx is None:
+        return None, None
+    try:
+        results = _zx.read_barcodes(gray, formats=_zx.BarcodeFormat.QRCode)
+    except Exception:
+        return None, None
+    for r in results:
+        if r.text:
+            p = r.position
+            pts = np.array([[p.top_left.x, p.top_left.y], [p.top_right.x, p.top_right.y],
+                            [p.bottom_right.x, p.bottom_right.y], [p.bottom_left.x, p.bottom_left.y]], np.float32)
+            return r.text, pts
+    return None, None
