@@ -156,3 +156,14 @@ def payload_type(text: str) -> str:
     if " " not in t and _URL_RE.match(t):
         return "url"
     return "text"
+
+
+def rectify(result: DecodeResult, size: int = 224, margin: float = 0.06) -> Optional[np.ndarray]:
+    """Warp the detected QR to a straight size x size square (input for the ViT)."""
+    if result.image is None or result.corners is None or len(result.corners) != 4:
+        return None
+    src = result.corners.astype(np.float32)
+    m = size * margin
+    dst = np.array([[m, m], [size - m, m], [size - m, size - m], [m, size - m]], dtype=np.float32)
+    H = cv2.getPerspectiveTransform(src, dst)
+    return cv2.warpPerspective(result.image, H, (size, size), flags=cv2.INTER_AREA, borderValue=255)
