@@ -210,3 +210,20 @@ def downscale(gray: np.ndarray, max_side: int = 1600) -> np.ndarray:
     h, w = gray.shape[:2]
     f = max_side / max(h, w)
     return gray if f >= 1 else cv2.resize(gray, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
+
+
+def photo_candidates(gray: np.ndarray) -> list[tuple[str, np.ndarray]]:
+    """Versions of a camera photo to try, from cheapest to most processed.
+    Screens and prints give glare, moire and soft edges; one of these usually reads."""
+    g = downscale(gray, 1600)
+    out = [("photo", g)]
+    for side in (1000, 700):
+        if max(g.shape) > side:
+            out.append((f"photo_{side}", downscale(g, side)))
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(downscale(g, 1000))
+    out.append(("photo_clahe", clahe))
+    blur = cv2.GaussianBlur(downscale(g, 1000), (5, 5), 0)
+    out.append(("photo_otsu", cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]))
+    out.append(("photo_adaptive", cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                                         cv2.THRESH_BINARY, 51, 10)))
+    return out
