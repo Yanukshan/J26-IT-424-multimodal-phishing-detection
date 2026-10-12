@@ -203,3 +203,10 @@ def locate(result: DecodeResult, size: int = 448, margin: float = 0.10) -> Optio
     dst = np.array([[m, m], [size - m, m], [size - m, size - m], [m, size - m]], dtype=np.float32)
     H = cv2.getPerspectiveTransform(src, dst)
     return cv2.warpPerspective(result.image, H, (size, size), flags=cv2.INTER_AREA, borderValue=255)
+
+
+def downscale(gray: np.ndarray, max_side: int = 1600) -> np.ndarray:
+    """Phone photos are 3000-4000 px; decoding and scoring do not need that."""
+    h, w = gray.shape[:2]
+    f = max_side / max(h, w)
+    return gray if f >= 1 else cv2.resize(gray, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
