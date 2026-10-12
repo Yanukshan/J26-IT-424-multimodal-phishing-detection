@@ -167,3 +167,10 @@ def rectify(result: DecodeResult, size: int = 224, margin: float = 0.06) -> Opti
     dst = np.array([[m, m], [size - m, m], [size - m, size - m], [m, size - m]], dtype=np.float32)
     H = cv2.getPerspectiveTransform(src, dst)
     return cv2.warpPerspective(result.image, H, (size, size), flags=cv2.INTER_AREA, borderValue=255)
+
+
+def _order_corners(pts: np.ndarray) -> np.ndarray:
+    """Top-left, top-right, bottom-right, bottom-left (any decoder's order in)."""
+    pts = np.asarray(pts, dtype=np.float32).reshape(4, 2)
+    s, d = pts.sum(1), np.diff(pts, axis=1).ravel()
+    return np.array([pts[np.argmin(s)], pts[np.argmin(d)], pts[np.argmax(s)], pts[np.argmax(d)]], dtype=np.float32)
