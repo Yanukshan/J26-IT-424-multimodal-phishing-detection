@@ -227,3 +227,30 @@ def photo_candidates(gray: np.ndarray) -> list[tuple[str, np.ndarray]]:
     out.append(("photo_adaptive", cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                          cv2.THRESH_BINARY, 51, 10)))
     return out
+
+
+def decode_photo(gray: np.ndarray) -> DecodeResult:
+    """decode() for real camera photos: tries several cleaned-up versions.
+    If none can be read, the result still carries the image where a code was
+    FOUND (not read), so the visual model can check it; image=None means no code at all."""
+    cands = photo_candidates(gray)
+    for name, c in cands:
+        r = decode(c)
+        if r.ok:
+            r.method = f"{name}+{r.method}"
+            return r
+    for name, c in cands:                       # nothing readable: is there a code at all?
+        r = DecodeResult(False, image=add_quiet_zone(c), method=name)
+        crop = locate(r)
+        if crop is not None:
+            # a straightened crop often reads when the whole photo did not (curved posters,
+            # rounded-dot and logo designs); keep r.image/corners so locate() still works
+            blur = cv2.GaussianBlur(crop, (3, 3), 0)
+            for tag, cc in (("crop", crop), ("crop_otsu", cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]),
+                            ("crop_small", cv2.resize(crop, (224, 224), interpolation=cv2.INTER_AREA))):
+                d = decode(cc)
+                if d.ok:
+                    r.ok, r.text, r.payload_type, r.method = True, d.text, d.payload_type, f"{name}+{tag}+{d.method}"
+                    break
+            return r
+    return DecodeResult(False, image=None)
