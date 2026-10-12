@@ -123,3 +123,11 @@ def decode(img: ImageLike) -> DecodeResult:
     if text:
         return DecodeResult(True, text, payload_type(text), "zxing", pts, gray)
     return DecodeResult(False, image=gray)
+
+
+_URL_RE = re.compile(
+    r"^(?:[a-z][a-z0-9+.\-]*://)?"                    # optional scheme
+    r"(?:\[?[0-9a-f:.]+\]?|[\w\-]+(?:\.[\w\-]+)+)"    # IP or dotted host
+    r"(?::\d{1,5})?(?:[/?#].*)?$",
+    re.IGNORECASE | re.DOTALL,
+)
