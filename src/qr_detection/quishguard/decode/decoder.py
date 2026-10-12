@@ -131,3 +131,28 @@ _URL_RE = re.compile(
     r"(?::\d{1,5})?(?:[/?#].*)?$",
     re.IGNORECASE | re.DOTALL,
 )
+
+
+def payload_type(text: str) -> str:
+    """url | wifi | payment | email | phone | sms | contact | geo | text"""
+    t = (text or "").strip()
+    low = t.lower()
+    if not t:
+        return "none"
+    if low.startswith("wifi:"):
+        return "wifi"
+    if low.startswith(("upi://", "bitcoin:", "ethereum:", "litecoin:", "lightning:")) or "pay?" in low[:20]:
+        return "payment"
+    if low.startswith(("mailto:", "matmsg:")):
+        return "email"
+    if low.startswith("tel:"):
+        return "phone"
+    if low.startswith(("smsto:", "sms:", "mmsto:")):
+        return "sms"
+    if low.startswith(("begin:vcard", "mecard:", "begin:vevent")):
+        return "contact"
+    if low.startswith("geo:"):
+        return "geo"
+    if " " not in t and _URL_RE.match(t):
+        return "url"
+    return "text"
