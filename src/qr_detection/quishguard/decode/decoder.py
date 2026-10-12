@@ -102,3 +102,24 @@ def _try_zxing(gray: np.ndarray):
                             [p.bottom_right.x, p.bottom_right.y], [p.bottom_left.x, p.bottom_left.y]], np.float32)
             return r.text, pts
     return None, None
+
+
+def decode(img: ImageLike) -> DecodeResult:
+    """Decode a QR image. Tries OpenCV, then an upscaled copy, then pyzbar, then zxing-cpp."""
+    gray = add_quiet_zone(to_gray(img))
+    attempts = [("opencv", gray)]
+    if max(gray.shape) < 400:
+        attempts.append(("opencv_x2", cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)))
+    for name, im in attempts:
+        text, pts = _try_opencv(im)
+        if text:
+            if pts is not None and name.endswith("_x2"):
+                pts = pts / 2.0
+            return DecodeResult(True, text, payload_type(text), name, pts, gray)
+    text, pts = _try_pyzbar(gray)
+    if text:
+        return DecodeResult(True, text, payload_type(text), "pyzbar", pts, gray)
+    text, pts = _try_zxing(gray)
+    if text:
+        return DecodeResult(True, text, payload_type(text), "zxing", pts, gray)
+    return DecodeResult(False, image=gray)
