@@ -28,3 +28,12 @@ SHORTENERS = {
     "cutt.ly", "rebrand.ly", "shorturl.at", "rb.gy", "tiny.cc", "t.ly", "s.id",
     "v.gd", "qrco.de", "shorturl.asia", "bl.ink",
 }
+# free hosting / dynamic DNS / page builders often abused for phishing
+FREE_HOSTS = {
+    "duckdns.org", "000webhostapp.com", "workers.dev", "pages.dev", "web.app",
+    "firebaseapp.com", "weebly.com", "wixsite.com", "blogspot.com", "github.io",
+    "glitch.me", "herokuapp.com", "netlify.app", "vercel.app", "ngrok.io",
+    "ngrok-free.app", "no-ip.com", "ddns.net", "hopto.org", "zapto.org",
+    "sites.google.com", "googleusercontent.com", "square.site", "godaddysites.com",
+    "webflow.io", "r2.dev", "ipfs.io", "azurewebsites.net", "appspot.com",
+}
