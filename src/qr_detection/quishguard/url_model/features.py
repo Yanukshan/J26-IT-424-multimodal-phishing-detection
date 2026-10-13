@@ -15,3 +15,11 @@ import pandas as pd
 
 from quishguard.data.urls import get_host, is_ip, normalize_url, registered_domain
 
+SUSPICIOUS_WORDS = (
+    "login", "log-in", "signin", "sign-in", "verify", "verification", "account",
+    "update", "secure", "security", "confirm", "banking", "bank", "password",
+    "passwd", "wallet", "invoice", "payment", "billing", "support", "unlock",
+    "suspend", "webscr", "cmd=", "auth", "token", "reset", "recover", "gift",
+    "bonus", "free", "promo", "claim", "paypal", "apple", "microsoft", "office365",
+    "outlook", "netflix", "amazon", "dhl", "fedex", "usps",
+)
