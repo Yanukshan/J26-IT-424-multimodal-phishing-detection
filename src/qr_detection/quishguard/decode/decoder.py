@@ -254,3 +254,11 @@ def decode_photo(gray: np.ndarray) -> DecodeResult:
                     break
             return r
     return DecodeResult(False, image=None)
+
+
+def clean_photo(crop: np.ndarray) -> np.ndarray:
+    """Turn a straightened photo of a code into a clean black-and-white image, like the
+    computer-made codes the visual model learned from (removes glare, grey paper, screen
+    moire). Stickers and edits stay visible: they change the black/white pattern itself."""
+    blur = cv2.GaussianBlur(crop, (3, 3), 0)
+    return cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
