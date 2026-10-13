@@ -23,3 +23,8 @@ SUSPICIOUS_WORDS = (
     "bonus", "free", "promo", "claim", "paypal", "apple", "microsoft", "office365",
     "outlook", "netflix", "amazon", "dhl", "fedex", "usps",
 )
+SHORTENERS = {
+    "bit.ly", "tinyurl.com", "goo.gl", "t.co", "ow.ly", "is.gd", "buff.ly",
+    "cutt.ly", "rebrand.ly", "shorturl.at", "rb.gy", "tiny.cc", "t.ly", "s.id",
+    "v.gd", "qrco.de", "shorturl.asia", "bl.ink",
+}
