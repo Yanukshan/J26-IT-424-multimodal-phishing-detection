@@ -37,3 +37,15 @@ FREE_HOSTS = {
     "sites.google.com", "googleusercontent.com", "square.site", "godaddysites.com",
     "webflow.io", "r2.dev", "ipfs.io", "azurewebsites.net", "appspot.com",
 }
+RISKY_EXT = (".exe", ".apk", ".scr", ".bat", ".sh", ".bin", ".jar", ".msi", ".dll",
+             ".zip", ".rar", ".7z", ".js", ".vbs", ".ps1", ".m", ".mips", ".arm7")
+WEB_EXT = (".php", ".html", ".htm", ".asp", ".aspx", ".jsp", ".cgi")
+
+_SYMBOLS = set("-_.~!*'();:@&=+$,/?#[]%")
+
+
+def _entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    n = len(s)
+    return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
