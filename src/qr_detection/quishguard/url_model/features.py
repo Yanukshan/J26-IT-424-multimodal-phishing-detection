@@ -137,3 +137,12 @@ class UrlFeaturizer:
     @staticmethod
     def raw_frame(urls) -> pd.DataFrame:
         return pd.DataFrame([extract_one(u) for u in urls])
+
+    def fit(self, raw: pd.DataFrame, y) -> "UrlFeaturizer":
+        y = np.asarray(y)
+        self.prior_ = float(y.mean())
+        stats = pd.DataFrame({"tld": raw["_tld"].values, "y": y}).groupby("tld")["y"].agg(["sum", "count"])
+        k = self.smoothing
+        self.tld_risk_ = ((stats["sum"] + k * self.prior_) / (stats["count"] + k)).to_dict()
+        self.feature_names_ = [c for c in raw.columns if c != "_tld"] + ["tld_risk"]
+        return self
