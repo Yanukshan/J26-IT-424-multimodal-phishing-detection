@@ -123,3 +123,13 @@ def extract_one(url: str) -> dict:
                                                         "amazon", "netflix", "bank", "office"))),
         "_tld": tld,  # turned into tld_risk by UrlFeaturizer (fit on train only)
     }
+
+
+class UrlFeaturizer:
+    """Turns URLs into a numeric matrix. `fit` learns TLD risk from TRAIN only."""
+
+    def __init__(self, smoothing: float = 20.0):
+        self.smoothing = smoothing
+        self.tld_risk_: dict[str, float] = {}
+        self.prior_: float = 0.5
+        self.feature_names_: list[str] = []
