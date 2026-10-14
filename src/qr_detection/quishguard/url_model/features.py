@@ -133,3 +133,7 @@ class UrlFeaturizer:
         self.tld_risk_: dict[str, float] = {}
         self.prior_: float = 0.5
         self.feature_names_: list[str] = []
+
+    @staticmethod
+    def raw_frame(urls) -> pd.DataFrame:
+        return pd.DataFrame([extract_one(u) for u in urls])
