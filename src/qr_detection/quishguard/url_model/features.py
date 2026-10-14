@@ -49,3 +49,13 @@ def _entropy(s: str) -> float:
         return 0.0
     n = len(s)
     return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
+
+
+def _max_run(s: str) -> int:
+    best = run = 0
+    prev = None
+    for ch in s:
+        run = run + 1 if ch == prev else 1
+        best = max(best, run)
+        prev = ch
+    return best
