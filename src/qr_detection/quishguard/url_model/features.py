@@ -146,3 +146,8 @@ class UrlFeaturizer:
         self.tld_risk_ = ((stats["sum"] + k * self.prior_) / (stats["count"] + k)).to_dict()
         self.feature_names_ = [c for c in raw.columns if c != "_tld"] + ["tld_risk"]
         return self
+
+    def transform(self, raw: pd.DataFrame) -> pd.DataFrame:
+        X = raw.drop(columns=["_tld"]).copy()
+        X["tld_risk"] = raw["_tld"].map(self.tld_risk_).fillna(self.prior_).astype(float)
+        return X[self.feature_names_].astype(np.float32)
