@@ -59,3 +59,67 @@ def _max_run(s: str) -> int:
         best = max(best, run)
         prev = ch
     return best
+
+
+def extract_one(url: str) -> dict:
+    """Features for one URL (raw or already normalised)."""
+    u = normalize_url(url)
+    host = get_host(u)
+    dom = registered_domain(host)
+    ip = is_ip(host)
+    rest = u[len(host):] if u.lower().startswith(host) else u.split("/", 1)[-1]
+    has_port = bool(re.match(r"^:\d{1,5}", rest))
+    path = re.split(r"[?#]", rest, maxsplit=1)[0]
+    query = rest.split("?", 1)[1] if "?" in rest else ""
+    low = u.lower()
+    n = max(len(u), 1)
+    labels = host.split(".") if host and not ip else []
+    sub = host[: -len(dom)].rstrip(".") if dom and host.endswith(dom) and not ip else ""
+    tld = labels[-1] if labels else ("ip" if ip else "")
+    tokens = [t for t in re.split(r"[./?=&_\-:%]", u) if t]
+    last_seg = path.rstrip("/").split("/")[-1].lower() if path else ""
+
+    return {
+        "len_url": len(u),
+        "len_host": len(host),
+        "len_path": len(path),
+        "len_query": len(query),
+        "digit_ratio": sum(c.isdigit() for c in u) / n,
+        "letter_ratio": sum(c.isalpha() for c in u) / n,
+        "symbol_ratio": sum(c in _SYMBOLS for c in u) / n,
+        "upper_ratio": sum(c.isupper() for c in u) / n,
+        "entropy_url": _entropy(u),
+        "entropy_host": _entropy(host),
+        "host_digit_ratio": sum(c.isdigit() for c in host) / max(len(host), 1),
+        "host_hyphens": host.count("-"),
+        "n_dots": u.count("."),
+        "n_host_labels": len(labels),
+        "n_subdomain_labels": len([x for x in sub.split(".") if x]),
+        "len_subdomain": len(sub),
+        "len_domain_label": len(dom.split(".")[0]) if dom and not ip else 0,
+        "len_tld": len(tld) if not ip else 0,
+        "is_ip": int(ip),
+        "has_port": int(has_port),
+        "path_depth": path.count("/"),
+        "n_query_params": query.count("&") + (1 if query else 0),
+        "n_at": u.count("@"),
+        "n_percent": u.count("%"),
+        "n_equals": u.count("="),
+        "n_tilde": u.count("~"),
+        "n_underscore": u.count("_"),
+        "has_punycode": int("xn--" in host),
+        "has_double_slash_in_path": int("//" in path),
+        "n_suspicious_words": sum(w in low for w in SUSPICIOUS_WORDS),
+        "is_shortener": int(host in SHORTENERS or dom in SHORTENERS),
+        "is_free_host": int(dom in FREE_HOSTS or host in FREE_HOSTS
+                            or any(host.endswith("." + f) for f in FREE_HOSTS)),
+        "risky_ext": int(last_seg.endswith(RISKY_EXT)),
+        "web_ext": int(last_seg.endswith(WEB_EXT)),
+        "max_token_len": max((len(t) for t in tokens), default=0),
+        "n_tokens": len(tokens),
+        "max_char_run": _max_run(u),
+        "host_vowel_ratio": sum(c in "aeiou" for c in host) / max(sum(c.isalpha() for c in host), 1),
+        "brand_in_subdomain": int(any(b in sub for b in ("paypal", "apple", "microsoft", "google",
+                                                        "amazon", "netflix", "bank", "office"))),
+        "_tld": tld,  # turned into tld_risk by UrlFeaturizer (fit on train only)
+    }
