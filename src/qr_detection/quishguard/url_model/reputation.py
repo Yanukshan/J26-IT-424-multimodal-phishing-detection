@@ -34,3 +34,9 @@ class Reputation:
                 if r > top_n:
                     break
                 self.rank[d.lower()] = r
+
+    def lookup(self, url: str) -> int | None:
+        host = get_host(url)
+        if not host or is_ip(host):
+            return None
+        return self.rank.get(registered_domain(host).lower())
