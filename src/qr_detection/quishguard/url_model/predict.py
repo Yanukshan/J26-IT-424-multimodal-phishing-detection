@@ -55,3 +55,28 @@ class UrlScorer:
                 self._xgb = xgb
         except ImportError:
             pass
+
+    def score(self, url: str, explain: bool = True, top_k: int = 5) -> dict:
+        X = self.feat.transform(UrlFeaturizer.raw_frame([url]))
+        if self.char is not None:
+            text = normalize_url(url)
+            if self.char.get("mask_tld"):
+                text = mask_tld(text)
+            t = self.char["vectorizer"].transform([text])
+            X["char_ngram_prob"] = self.char["lr"].predict_proba(t)[:, 1].astype(np.float32)
+        X = X[self.names]
+        raw_p = float(self.model.predict_proba(X)[0, 1])
+        p = float(self.cal.predict([raw_p])[0])
+        out = {"url_score": round(100 * p, 2), "probability": p,
+               "malicious": p >= self.thresholds.get("default", 0.5)}
+        if explain and self._booster is not None:
+            contrib = self._booster.predict(self._xgb.DMatrix(X), pred_contribs=True)[0][:-1]
+            order = np.argsort(-np.abs(contrib))[:top_k]
+            out["reasons"] = [{
+                "feature": self.names[i],
+                "text": READABLE.get(self.names[i], self.names[i]),
+                "value": round(float(X.iloc[0, i]), 4),
+                "effect": "raises risk" if contrib[i] > 0 else "lowers risk",
+                "weight": round(float(contrib[i]), 4),
+            } for i in order]
+        return out
