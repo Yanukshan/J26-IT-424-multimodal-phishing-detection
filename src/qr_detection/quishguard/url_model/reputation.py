@@ -18,3 +18,19 @@ from quishguard.data.urls import get_host, is_ip, registered_domain
 SUSPICIOUS_CAP = 50.0
 
 
+class Reputation:
+    def __init__(self, tranco_csv: Path | str, top_n: int = 10_000):
+        self.top_n = top_n
+        self.rank: dict[str, int] = {}
+        with open(tranco_csv, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                r, _, d = line.strip().partition(",")
+                if not d:
+                    continue
+                try:
+                    r = int(r)
+                except ValueError:
+                    continue
+                if r > top_n:
+                    break
+                self.rank[d.lower()] = r
