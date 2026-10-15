@@ -30,3 +30,28 @@ READABLE = {
     "brand_in_subdomain": "brand name in subdomain", "tld_risk": "TLD often used for phishing",
     "char_ngram_prob": "character patterns look like known phishing URLs",
 }
+
+
+class UrlScorer:
+    def __init__(self, path: Path | str = config.MODELS_DIR / "url_model.joblib"):
+        b = joblib.load(path)
+        self.feat: UrlFeaturizer = b["featurizer"]
+        self.model = b["model"]
+        if self.model is None and b.get("model_json") is not None:
+            # portable bundle: the XGBoost model is stored in XGBoost's own JSON format
+            # (loads on any OS / build), not as a pickled Python object
+            import xgboost as xgb
+            self.model = xgb.XGBClassifier()
+            self.model.load_model(bytearray(b["model_json"]))
+        self.cal = b["calibrator"]
+        self.thresholds = b["thresholds"]
+        self.names = b["feature_names"]
+        self.char = b.get("char_model")
+        self._booster = None
+        try:
+            import xgboost as xgb
+            if isinstance(self.model, xgb.XGBClassifier):
+                self._booster = self.model.get_booster()
+                self._xgb = xgb
+        except ImportError:
+            pass
