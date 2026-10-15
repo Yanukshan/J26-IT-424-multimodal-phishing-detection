@@ -40,3 +40,13 @@ class Reputation:
         if not host or is_ip(host):
             return None
         return self.rank.get(registered_domain(host).lower())
+
+    def adjust(self, url: str, url_score: float) -> tuple[float, str | None, int | None]:
+        """-> (score to use, reason or None, tranco rank or None)."""
+        rank = self.lookup(url)
+        if rank is None or url_score <= SUSPICIOUS_CAP:
+            return url_score, None, rank
+        return (SUSPICIOUS_CAP,
+                f"Link: on a popular platform (Tranco rank {rank:,}); its text alone cannot show whether the page "
+                "is safe. Warned instead of blocked: open only if you trust who placed the code.",
+                rank)
