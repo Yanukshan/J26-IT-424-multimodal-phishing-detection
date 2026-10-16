@@ -99,3 +99,17 @@ def check(data: bytes, filename: str) -> dict:
 @app.get("/")
 def index():
     return FileResponse(HERE / "index.html")
+
+
+@app.post("/api/scan")
+async def scan(request: Request):
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "No image received.")
+    if len(data) > MAX_BYTES:
+        raise HTTPException(413, "Image is too large (max 15 MB).")
+    name = Path(unquote(request.headers.get("X-File-Name", "image"))).name[:80]
+    result = check(data, name)
+    history.insert(0, result)
+    del history[MAX_HISTORY:]
+    return result
