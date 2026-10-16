@@ -113,3 +113,8 @@ async def scan(request: Request):
     history.insert(0, result)
     del history[MAX_HISTORY:]
     return result
+
+
+@app.get("/api/history")
+def get_history():
+    return history
