@@ -41,3 +41,15 @@ PAYLOAD_NAMES = {"wifi": "Wi-Fi details", "payment": "payment request", "email":
 _SCHEME = re.compile(r"^([a-z][a-z0-9+.\-]*)://", re.IGNORECASE)
 
 
+def defang(text: str | None) -> str:
+    """hxxps://login[.]example[.]com/x : shows a link without making it clickable."""
+    if not text:
+        return ""
+    t = text.strip()
+    scheme = ""
+    m = _SCHEME.match(t)
+    if m:
+        scheme = re.sub(r"^http", "hxxp", m.group(1), flags=re.IGNORECASE) + "://"
+        t = t[m.end():]
+    host, sep, rest = t.partition("/")
+    return scheme + host.replace(".", "[.]") + sep + rest
