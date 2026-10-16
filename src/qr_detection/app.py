@@ -118,3 +118,9 @@ async def scan(request: Request):
 @app.get("/api/history")
 def get_history():
     return history
+
+
+@app.delete("/api/history")
+def clear_history():
+    history.clear()
+    return {"ok": True}
