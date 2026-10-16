@@ -94,3 +94,8 @@ def check(data: bytes, filename: str) -> dict:
             out.update(verdict="Normal", message="This link looks normal.")
     out["ms"] = round((time.perf_counter() - t0) * 1000)
     return out
+
+
+@app.get("/")
+def index():
+    return FileResponse(HERE / "index.html")
