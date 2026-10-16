@@ -124,3 +124,12 @@ def get_history():
 def clear_history():
     history.clear()
     return {"ok": True}
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=8050)
+    args = ap.parse_args()
+    print(f"QuishGuard 50% is running. Open http://localhost:{args.port}  (Ctrl+C to stop)")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
