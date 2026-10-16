@@ -53,3 +53,11 @@ def defang(text: str | None) -> str:
         t = t[m.end():]
     host, sep, rest = t.partition("/")
     return scheme + host.replace(".", "[.]") + sep + rest
+
+
+print("Loading URL model ...")
+scorer = UrlScorer(MODELS / "url_model_v2_portable.joblib")
+reputation = Reputation(MODELS / "tranco_top10k.csv")
+history: list[dict] = []
+
+app = FastAPI(title="QuishGuard 50%", docs_url=None, redoc_url=None)
