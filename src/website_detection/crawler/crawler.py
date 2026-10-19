@@ -61,7 +61,22 @@ def normalize_url(url: str) -> str:
     """
     Normalize a URL supplied to the crawler.
 
-    If there is no HTTP/HTTPS scheme, HTTPS is used.
+    Rules:
+    - If there is no HTTP/HTTPS scheme, HTTPS is used.
+    - Canonicalize only an equivalent root-path trailing slash.
+
+      Examples that become identical:
+          https://example.com
+          https://example.com/
+
+      Both normalize to:
+          https://example.com
+
+    - Non-root paths are preserved exactly. For example,
+      https://example.com/login/ is NOT changed because a
+      server may treat /login and /login/ differently.
+
+    Query strings and fragments are preserved.
     """
 
     url = str(url).strip()
@@ -72,7 +87,29 @@ def normalize_url(url: str) -> str:
             "https://",
         )
     ):
-        return f"https://{url}"
+        url = f"https://{url}"
+
+    try:
+        parsed = urlparse(url)
+
+        # A single slash is the HTTP origin's root path and is
+        # equivalent to an empty path. Canonicalizing it prevents
+        # URL-feature differences such as path_length 0 vs 1 from
+        # changing the tabular model solely because the user typed
+        # a trailing slash.
+        if (
+            parsed.scheme.lower() in {"http", "https"}
+            and parsed.netloc
+            and parsed.path == "/"
+            and not parsed.params
+        ):
+            parsed = parsed._replace(path="")
+            url = parsed.geturl()
+
+    except Exception:
+        # Keep the existing crawler behavior for malformed/unusual
+        # input. Navigation/error handling will classify it later.
+        pass
 
     return url
 
@@ -938,6 +975,9 @@ def build_browser_error_result(
 def crawl_website(
     url: str,
     label: int | None = None,
+    navigation_wait_until: str = "load",
+    recover_navigation_timeout: bool = False,
+    post_navigation_wait_ms: int = 0,
 ) -> dict[str, Any]:
     """
     Dynamically render and analyse one website.
@@ -957,6 +997,9 @@ def crawl_website(
         - response status telemetry
         - server redirect chain
         - late/client-side navigation information
+
+    Live inference can optionally recover when the requested load state
+    times out but Chromium has already rendered a usable real document.
 
     It does not submit forms or enter credentials.
     """
@@ -1194,12 +1237,61 @@ def crawl_website(
             # INITIAL NAVIGATION
             # =================================================
 
-            initial_response = page.goto(
-                requested_url,
-                wait_until="load",
-                timeout=
-                    DEFAULT_TIMEOUT_MS,
-            )
+            allowed_wait_states = {
+                "commit",
+                "domcontentloaded",
+                "load",
+                "networkidle",
+            }
+
+            if navigation_wait_until not in allowed_wait_states:
+                raise ValueError(
+                    "Unsupported navigation_wait_until: "
+                    f"{navigation_wait_until}"
+                )
+
+            if post_navigation_wait_ms < 0:
+                raise ValueError(
+                    "post_navigation_wait_ms cannot be negative"
+                )
+
+            navigation_timeout_recovered = False
+
+            try:
+                initial_response = page.goto(
+                    requested_url,
+                    wait_until=navigation_wait_until,
+                    timeout=
+                        DEFAULT_TIMEOUT_MS,
+                )
+
+            except PlaywrightTimeoutError:
+                if not recover_navigation_timeout:
+                    raise
+
+                # page.goto() may time out while Chromium has already
+                # rendered a usable document. In live-inference mode we
+                # may safely continue with that rendered page instead of
+                # converting it immediately into a crawl failure.
+                try:
+                    current_url = str(page.url or "")
+                    current_html = page.content()
+                except PlaywrightError:
+                    raise
+
+                if (
+                    not current_url
+                    or is_browser_internal_error_url(current_url)
+                    or not str(current_html).strip()
+                ):
+                    raise
+
+                navigation_timeout_recovered = True
+
+            if post_navigation_wait_ms > 0:
+                page.wait_for_timeout(
+                    int(post_navigation_wait_ms)
+                )
 
             # =================================================
             # STABLE SNAPSHOT
@@ -1529,6 +1621,12 @@ def crawl_website(
                         html
                     ),
 
+                "navigation_wait_until":
+                    navigation_wait_until,
+
+                "navigation_timeout_recovered":
+                    navigation_timeout_recovered,
+
                 "url_features":
                     url_features,
 
@@ -1584,6 +1682,12 @@ def crawl_website(
 
                 **failure_redirect_metadata,
 
+                "navigation_wait_until":
+                    navigation_wait_until,
+
+                "navigation_timeout_recovered":
+                    False,
+
                 "url_features":
                     extract_url_features(
                         requested_url=
@@ -1632,6 +1736,12 @@ def crawl_website(
 
                 **failure_redirect_metadata,
 
+                "navigation_wait_until":
+                    navigation_wait_until,
+
+                "navigation_timeout_recovered":
+                    False,
+
                 "url_features":
                     extract_url_features(
                         requested_url=
@@ -1667,6 +1777,12 @@ def crawl_website(
                     requested_url,
 
                 **failure_redirect_metadata,
+
+                "navigation_wait_until":
+                    navigation_wait_until,
+
+                "navigation_timeout_recovered":
+                    False,
 
                 "url_features":
                     extract_url_features(

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Website Phishing Detection</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --border: #334155;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --accent: #38bdf8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      background: linear-gradient(180deg, #0b1220 0%, var(--bg) 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .wrap {
+      width: min(1100px, 92%);
+      margin: 0 auto;
+      padding: 40px 0 60px;
+    }
+
+    .hero {
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 44px);
+    }
+
+    .subtitle {
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .panel {
+      background: rgba(17, 24, 39, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+      margin-bottom: 20px;
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 14px 20px;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--accent);
+      color: #00111a;
+      min-width: 150px;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 14px;
+      color: var(--muted);
+      min-height: 22px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+    }
+
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-12 { grid-column: span 12; }
+
+    .label {
+      color: var(--muted);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    .value {
+      font-size: 28px;
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .value.small {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .risk-bar {
+      margin-top: 12px;
+      height: 10px;
+      background: #0b1220;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .risk-fill {
+      height: 100%;
+      width: 0%;
+      transition: width 300ms ease;
+    }
+
+    .branch {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .branch-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .branch-meter {
+      height: 8px;
+      background: #0b1220;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .branch-meter > div {
+      height: 100%;
+      background: var(--accent);
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      margin-top: 8px;
+    }
+
+    .pill.good {
+      color: #bbf7d0;
+      background: rgba(34, 197, 94, 0.16);
+    }
+
+    .pill.warn {
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.16);
+    }
+
+    .pill.bad {
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.16);
+    }
+
+    ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+      color: #dbeafe;
+      line-height: 1.7;
+    }
+
+    .meta {
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .meta strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0b1220;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      color: #cbd5e1;
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    @media (max-width: 800px) {
+      .input-row {
+        grid-template-columns: 1fr;
+      }
+
+      .span-4,
+      .span-6 {
+        grid-column: span 12;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>Website Phishing Detection</h1>
+      <div class="subtitle">
+        Frozen multimodal research models + operational conflict handling. Raw model outputs are preserved unchanged.
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="input-row">
+        <input
+          id="urlInput"
+          type="text"
+          value="https://example.com"
+          placeholder="Enter a public website URL"
+        />
+        <button id="analyzeBtn">Analyze Website</button>
+      </div>
+      <div id="status" class="status">Ready.</div>
+    </section>
+
+    <section id="results" class="panel hidden">
+      <div class="grid">
+        <div class="card span-4">
+          <div class="label">Operational Decision</div>
+          <div id="prediction" class="value">—</div>
+          <span id="predictionPill" class="pill">—</span>
+        </div>
+
+        <div class="card span-4">
+          <div class="label">Raw Fusion Risk Score</div>
+          <div class="value"><span id="riskScore">—</span>/100</div>
+          <div class="risk-bar">
+            <div id="riskFill" class="risk-fill"></div>
+          </div>
+        </div>
+
+        <div class="card span-4">
+          <div class="label">Operational Action</div>
+          <div id="riskLevel" class="value small">—</div>
+          <span id="reviewPill" class="pill">—</span>
+        </div>
+
+        <div class="card span-12">
+          <div class="label">Raw Research Model Output</div>
+          <div class="meta">
+            <div><strong>Frozen fusion prediction:</strong> <span id="rawPrediction">—</span></div>
+            <div><strong>Raw fusion risk:</strong> <span id="rawRisk">—</span></div>
+            <div><strong>Operational conflict type:</strong> <span id="conflictType">—</span></div>
+            <div><strong>Operational reason:</strong> <span id="operationalReason">—</span></div>
+          </div>
+        </div>
+
+        <div class="card span-6">
+          <div class="label">Branch Scores</div>
+          <div id="branches"></div>
+        </div>
+
+        <div class="card span-6">
+          <div class="label">Evidence / Review</div>
+          <div class="meta">
+            <div><strong>Evidence:</strong> <span id="evidenceStatus">—</span></div>
+            <div><strong>Majority branch vote:</strong> <span id="majorityPrediction">—</span></div>
+            <div><strong>Fusion score:</strong> <span id="fusionScore">—</span></div>
+            <div><strong>Probability spread:</strong> <span id="probabilitySpread">—</span></div>
+            <div><strong>Operational status:</strong> <span id="operationalStatus">—</span></div>
+          </div>
+        </div>
+
+        <div class="card span-12">
+          <div class="label">Observed Indicators</div>
+          <ul id="indicators"></ul>
+        </div>
+
+        <div class="card span-12">
+          <div class="label">Website Details</div>
+          <div class="meta">
+            <div><strong>Requested URL:</strong> <span id="requestedUrl">—</span></div>
+            <div><strong>Final URL:</strong> <span id="finalUrl">—</span></div>
+            <div><strong>Title:</strong> <span id="title">—</span></div>
+            <div><strong>Crawl status:</strong> <span id="crawlStatus">—</span></div>
+            <div><strong>HTTP status:</strong> <span id="httpStatus">—</span></div>
+          </div>
+        </div>
+
+        <div class="card span-12">
+          <div class="label">Raw API Response</div>
+          <pre id="rawJson"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const API_URL = "http://127.0.0.1:8001/api/website/analyze";
+
+    const urlInput = document.getElementById("urlInput");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const statusEl = document.getElementById("status");
+    const results = document.getElementById("results");
+
+    function pct(value) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) {
+        return "—";
+      }
+      return `${(Number(value) * 100).toFixed(2)}%`;
+    }
+
+    function riskColor(score) {
+      if (score < 20) return "#22c55e";
+      if (score < 40) return "#84cc16";
+      if (score < 60) return "#f59e0b";
+      if (score < 80) return "#f97316";
+      return "#ef4444";
+    }
+
+    function setPill(el, text, type) {
+      el.textContent = text;
+      el.className = `pill ${type}`;
+    }
+
+    function renderBranch(name, branch) {
+      const score = Number(branch?.probability ?? 0);
+      return `
+        <div class="branch">
+          <div class="branch-top">
+            <strong>${name}</strong>
+            <span>${pct(score)} — ${branch?.prediction ?? "—"}</span>
+          </div>
+          <div class="branch-meter">
+            <div style="width:${Math.max(0, Math.min(100, score * 100))}%"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function render(data) {
+      results.classList.remove("hidden");
+
+      const modelRan =
+        data.analysis_status === "SUCCESS" &&
+        data.prediction !== null &&
+        data.prediction !== undefined;
+
+      const op = data.operational_result || {};
+      const operationalDecision =
+        op.decision ||
+        (modelRan ? data.prediction : "REVIEW_REQUIRED");
+
+      const operationalAction =
+        op.action ||
+        (modelRan ? "MANUAL_REVIEW" : "RETRY_OR_MANUAL_REVIEW");
+
+      document.getElementById("rawPrediction").textContent =
+        data.prediction ?? "NO MODEL DECISION";
+
+      document.getElementById("rawRisk").textContent =
+        data.risk_score === null || data.risk_score === undefined
+          ? "Unavailable"
+          : `${data.risk_score}/100 (${data.risk_level ?? "—"})`;
+
+      document.getElementById("conflictType").textContent =
+        op.conflict_type ?? "—";
+
+      document.getElementById("operationalReason").textContent =
+        op.reason ?? data.reason ?? "—";
+
+      if (!modelRan) {
+        document.getElementById("prediction").textContent = "REVIEW REQUIRED";
+        document.getElementById("riskScore").textContent = "—";
+        document.getElementById("riskLevel").textContent =
+          operationalAction.replaceAll("_", " ");
+
+        const riskFill = document.getElementById("riskFill");
+        riskFill.style.width = "0%";
+
+        setPill(
+          document.getElementById("predictionPill"),
+          "NO AUTOMATIC CLASS",
+          "warn"
+        );
+
+        setPill(
+          document.getElementById("reviewPill"),
+          "REVIEW / RETRY",
+          "warn"
+        );
+
+        document.getElementById("branches").innerHTML =
+          "<div class=\"meta\">LightGBM, ResNet18 and GraphSAGE were not run for this request.</div>";
+
+        document.getElementById("evidenceStatus").textContent =
+          "MODEL_INFERENCE_NOT_RUN";
+        document.getElementById("majorityPrediction").textContent = "—";
+        document.getElementById("fusionScore").textContent = "—";
+        document.getElementById("probabilitySpread").textContent = "—";
+        document.getElementById("operationalStatus").textContent =
+          op.status ?? data.operational_status ?? "CRAWL_UNAVAILABLE_REVIEW";
+
+        const reason =
+          data.reason ||
+          data.crawl_error ||
+          "The page could not be crawled successfully.";
+
+        document.getElementById("indicators").innerHTML =
+          `<li>${reason}</li>`;
+
+        document.getElementById("requestedUrl").textContent =
+          data.requested_url ?? data.input_url ?? "—";
+        document.getElementById("finalUrl").textContent =
+          data.final_url || "—";
+        document.getElementById("title").textContent =
+          data.title || "—";
+        document.getElementById("crawlStatus").textContent =
+          data.crawl_status ?? "—";
+        document.getElementById("httpStatus").textContent =
+          data.status_code ?? "—";
+
+        document.getElementById("rawJson").textContent =
+          JSON.stringify(data, null, 2);
+
+        return;
+      }
+
+      document.getElementById("prediction").textContent =
+        operationalDecision.replaceAll("_", " ");
+
+      document.getElementById("riskScore").textContent =
+        data.risk_score ?? "—";
+
+      document.getElementById("riskLevel").textContent =
+        operationalAction.replaceAll("_", " ");
+
+      const score = Number(data.risk_score ?? 0);
+      const riskFill = document.getElementById("riskFill");
+      riskFill.style.width = `${Math.max(0, Math.min(100, score))}%`;
+      riskFill.style.background = riskColor(score);
+
+      const predictionPill = document.getElementById("predictionPill");
+
+      if (operationalDecision === "REVIEW_REQUIRED") {
+        setPill(predictionPill, "MODEL CONFLICT", "warn");
+      } else if (operationalDecision === "PHISHING") {
+        setPill(
+          predictionPill,
+          op.action === "MANUAL_REVIEW"
+            ? "PHISHING — REVIEW"
+            : "PHISHING",
+          "bad"
+        );
+      } else if (operationalDecision === "LEGITIMATE") {
+        setPill(
+          predictionPill,
+          op.action === "MANUAL_REVIEW"
+            ? "LEGITIMATE — REVIEW"
+            : "LEGITIMATE",
+          op.action === "MANUAL_REVIEW" ? "warn" : "good"
+        );
+      } else {
+        setPill(predictionPill, "REVIEW REQUIRED", "warn");
+      }
+
+      const reviewPill = document.getElementById("reviewPill");
+      if (op.action === "MANUAL_REVIEW") {
+        setPill(reviewPill, "ANALYST REVIEW REQUIRED", "warn");
+      } else {
+        setPill(reviewPill, "AUTOMATED RESULT", "good");
+      }
+
+      const branches = data.branch_scores || {};
+      document.getElementById("branches").innerHTML = [
+        renderBranch("LightGBM", branches.lightgbm),
+        renderBranch("ResNet18", branches.resnet18),
+        renderBranch("GraphSAGE", branches.graphsage)
+      ].join("");
+
+      document.getElementById("evidenceStatus").textContent =
+        data.evidence_status ?? "—";
+      document.getElementById("majorityPrediction").textContent =
+        data.majority_branch_prediction ?? "—";
+      document.getElementById("fusionScore").textContent =
+        pct(data.fusion_probability_raw);
+      document.getElementById("probabilitySpread").textContent =
+        pct(data.probability_spread);
+      document.getElementById("operationalStatus").textContent =
+        op.status ?? data.operational_status ?? "—";
+
+      const indicators = Array.isArray(data.observed_indicators)
+        ? data.observed_indicators
+        : [];
+      document.getElementById("indicators").innerHTML =
+        indicators.length
+          ? indicators.map(item => `<li>${item}</li>`).join("")
+          : "<li>No indicator summary available.</li>";
+
+      document.getElementById("requestedUrl").textContent =
+        data.requested_url ?? "—";
+      document.getElementById("finalUrl").textContent =
+        data.final_url ?? "—";
+      document.getElementById("title").textContent =
+        data.title ?? "—";
+      document.getElementById("crawlStatus").textContent =
+        data.crawl_status ?? "—";
+      document.getElementById("httpStatus").textContent =
+        data.status_code ?? "—";
+      document.getElementById("rawJson").textContent =
+        JSON.stringify(data, null, 2);
+    }
+
+    async function analyze() {
+      const url = urlInput.value.trim();
+
+      if (!url) {
+        statusEl.textContent = "Please enter a URL.";
+        return;
+      }
+
+      // Never leave an older result visible while a new URL is being analysed.
+      results.classList.add("hidden");
+      document.getElementById("rawJson").textContent = "";
+
+      analyzeBtn.disabled = true;
+      statusEl.textContent =
+        "Analyzing website... browser crawling and model inference may take several seconds.";
+
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ url })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || `HTTP ${response.status}`);
+        }
+
+        render(data);
+        statusEl.textContent = "Analysis complete.";
+      } catch (error) {
+        statusEl.textContent = `Analysis failed: ${error.message}`;
+      } finally {
+        analyzeBtn.disabled = false;
+      }
+    }
+
+    analyzeBtn.addEventListener("click", analyze);
+
+    urlInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        analyze();
+      }
+    });
+  </script>
+</body>
+</html>
